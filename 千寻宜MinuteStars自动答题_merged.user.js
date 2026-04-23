@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.4.0
+// @version      4.4.1
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区
 // @match        https://pcs.minutestars.com/*
@@ -1600,23 +1600,43 @@
     const pageWin = input.ownerDocument.defaultView;
     const rect = input.getBoundingClientRect();
     const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+
+    // --- 优先：触发 label（自定义组件的标准入口）---
+    const label = input.closest('label') || (input.id ? pageWin.document.querySelector('label[for="'+input.id+'"]') : null);
+    if (label) {
+      label.click();
+      for (const ev of ['mousedown','mouseup','click','pointerdown','pointerup','pointerclick']) {
+        label.dispatchEvent(new MouseEvent(ev, { view: pageWin, bubbles:true, cancelable:true, clientX:cx, clientY:cy }));
+      }
+    }
+
+    // --- 原生 input click + 全套事件（兜底）---
     input.click();
-    for (const ev of ['mousedown','mouseup','click']) {
+    for (const ev of ['mousedown','mouseup','click','pointerdown','pointerup']) {
       input.dispatchEvent(new MouseEvent(ev, { view: pageWin, bubbles:true, cancelable:true, clientX:cx, clientY:cy }));
     }
     input.dispatchEvent(new Event('change', { bubbles:true }));
     input.dispatchEvent(new Event('input',  { bubbles:true }));
+
+    // --- disabled / hidden 时的父链兜底 ---
     if (input.disabled || input.type === 'hidden') {
-      const lbl = input.nextElementSibling; if (lbl) lbl.click();
       let p = input.parentElement;
-      for (let i = 0; i < 3 && p; p = p.parentElement, i++) {
-        if (getComputedStyle(p).cursor === 'pointer' || p.tagName === 'LABEL') { p.click(); break; }
+      for (let i = 0; i < 4 && p; p = p.parentElement, i++) {
+        if (getComputedStyle(p).cursor === 'pointer' || p.tagName === 'LABEL') {
+          p.click();
+          for (const ev of ['mousedown','mouseup','click','pointerdown','pointerup']) {
+            p.dispatchEvent(new MouseEvent(ev, { view: pageWin, bubbles:true, cancelable:true, clientX:cx, clientY:cy }));
+          }
+          break;
+        }
       }
     }
-    await sleep(50);
+
+    await sleep(80);
     if (!input.checked) {
       input.checked = true;
       input.dispatchEvent(new Event('change', { bubbles:true }));
+      input.dispatchEvent(new Event('input',  { bubbles:true }));
     }
   }
 
@@ -1687,8 +1707,8 @@
       // 同时匹配 value 和 label 首字母
       const shouldCheck = letters.includes(v)
         || (/[A-Z]/.test(lbl1) && letters.includes(lbl1));
-      if (shouldCheck) { await checkInput(i); }
-      else if (i.type === 'checkbox' && i.checked) { await uncheckInput(i); }
+      if (shouldCheck) { await checkInput(i); await sleep(30); }  // 每项间隔 30ms，确保事件顺序
+      else if (i.type === 'checkbox' && i.checked) { await uncheckInput(i); await sleep(20); }
     }
     return true;
   }
