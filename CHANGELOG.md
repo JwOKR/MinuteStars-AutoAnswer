@@ -1,5 +1,8 @@
 # Changelog
 
+## v4.4.1
+- 修复多选题命中但不勾选的问题：checkInput 增加 label 优先触发 + pointerdown/pointerup 事件链 + await 顺序执行防止并行冲突
+
 ## v4.4.0
 - 主面板 UI 全面升级：暗色主题 + 渐变色 + 统计卡片 + 进度条动画
 
