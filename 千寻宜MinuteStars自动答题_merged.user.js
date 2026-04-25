@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.17
+// @version      4.5.18
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -490,6 +490,7 @@
     addBulk(text) {
       const db = this.load();
       let added = 0, skipped = 0;
+      const duplicates = [];
       const lines = text.split('\n').map(l => l.trim()).filter(l => l);
       for (const line of lines) {
         let q = '', a = '';
@@ -507,10 +508,15 @@
           if (idx1 !== -1) { q = line.substring(0, idx1).trim(); a = line.substring(idx1 + 2).trim(); }
           else if (idx2 !== -1) { q = line.substring(0, idx2).trim(); a = line.substring(idx2 + 1).trim(); }
         }
-        if (q && a) { db[q] = a; added++; } else skipped++;
+        if (q && a) {
+          if (db.hasOwnProperty(q)) {
+            duplicates.push({ q, oldAns: db[q], newAns: a });
+          }
+          db[q] = a; added++;
+        } else skipped++;
       }
       this.save(db);
-      return { added, skipped };
+      return { added, skipped, duplicates };
     },
 
     remove(question) {
@@ -1498,7 +1504,20 @@
   function doImport(text) {
     if (!text.trim()) { showImportResult('请输入题库内容！', false); return; }
     const r = LibraryManager.addBulk(text);
-    showImportResult('✅ 导入 ' + r.added + ' 条' + (r.skipped > 0 ? '，跳过 ' + r.skipped + ' 条' : ''), true);
+    let msg = '✅ 导入 ' + r.added + ' 条';
+    if (r.skipped > 0) msg += '，跳过 ' + r.skipped + ' 条（格式错误）';
+    if (r.duplicates && r.duplicates.length > 0) {
+      const list = r.duplicates.slice(0, 10).map(d =>
+        `<div style="margin:4px 0;padding:4px;background:#2a2a2a;border-radius:4px;font-size:11px">
+          <div style="color:#ffa726">📌 ${escHtml(d.q.substring(0, 50))}${d.q.length > 50 ? '...' : ''}</div>
+          <div style="color:#888">旧答案：${escHtml(d.oldAns)} → 新答案：${escHtml(d.newAns)}</div>
+        </div>`
+      ).join('');
+      const more = r.duplicates.length > 10 ? `<div style="color:#888">...还有 ${r.duplicates.length - 10} 条重复</div>` : '';
+      showImportResult(msg + `<div style="margin-top:8px"><b style="color:#fbbf24">⚠️ ${r.duplicates.length} 条重复（已覆盖）</b>${list}${more}</div>`, true);
+    } else {
+      showImportResult(msg, true);
+    }
     refreshLibCount(); refreshStats(); renderBrowse(currentPage);
     $('#ata-bulk-text').value = '';
   }
