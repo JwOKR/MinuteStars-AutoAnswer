@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.13
+// @version      4.5.14
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1652,9 +1652,10 @@
         .replace(/^\d+[\.、\s　]+/, '')  // 只去掉题号
         .trim();
 
-      // 只保留题干（过滤掉选项行 A. B. C. D. 等）
+      // 只保留题干（过滤掉选项行 A. B. C. D. 等，以及同行末尾的选项）
       qText = qText.split('\n')
         .filter(l => !/^[A-Za-z][\.、　\s]/.test(l.trim()))  // 去掉选项行
+        .map(l => l.replace(/\s*[A-Z][\.、　].*$/, ''))       // 去掉同行末尾的选项
         .filter(l => l.trim())                                // 过滤空行
         .join('\n');
 
