@@ -749,6 +749,17 @@
     }
     .ata-resizer:hover{opacity:1;background:linear-gradient(315deg,transparent 35%,rgba(79,195,247,.9) 35%,rgba(79,195,247,.9) 65%,transparent 65%);}
 
+    /* 拖拽状态视觉反馈 */
+    #ata-panel.ata-dragging .ata-hdr,
+    #ata-panel.ata-resizing {
+      background:linear-gradient(135deg,#1a2a3e 0%,#1e3a52 100%);
+    }
+    #ata-panel.ata-dragging,
+    #ata-panel.ata-resizing {
+      user-select:none;
+      cursor:move;
+    }
+
     /* 答题状态条 */
     .ata-status-bar{
       margin:4px 12px 6px;
@@ -2265,47 +2276,128 @@
 
 
 
-  /* =========================================================
-     拖拽面板（标题栏）
-  ========================================================= */
-  const hdr = document.querySelector('.ata-hdr');
-  let panelDrag = false, _pX = 0, _pY = 0;
-  hdr.style.cursor = 'move';
-  hdr.addEventListener('mousedown', e => {
-    if (e.target.closest('button')) return;
-    panelDrag = true;
-    _pX = e.clientX - panel.offsetLeft;
-    _pY = e.clientY - panel.offsetTop;
-    panel.style.right = 'auto';
-  });
-  document.addEventListener('mousemove', e => {
-    if (!panelDrag) return;
-    panel.style.left = (e.clientX - _pX) + 'px';
-    panel.style.top  = (e.clientY - _pY) + 'px';
-  });
-  document.addEventListener('mouseup', () => { panelDrag = false; });
+
 
   /* =========================================================
-     调节面板大小（左下角手柄）
+     拖拽面板（标题栏）- 优化版
+  ========================================================= */
+  const hdr = document.querySelector('.ata-hdr');
+  hdr.style.cursor = 'move';
+
+  let isDragging = false;
+  let dragOffsetX = 0, dragOffsetY = 0;
+  let rafId = null;
+
+  function startDrag(e) {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    isDragging = true;
+
+    // 缓存初始尺寸和偏移
+    const rect = panel.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+
+    // 切换到 left/top 定位
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.classList.add('ata-dragging');
+  }
+
+  function onDrag(e) {
+    if (!isDragging) return;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      // 计算新位置
+      let newX = e.clientX - dragOffsetX;
+      let newY = e.clientY - dragOffsetY;
+
+      // 边界限制：不能拖出视口
+      const maxX = window.innerWidth - panel.offsetWidth;
+      const maxY = window.innerHeight - panel.offsetHeight;
+      newX = Math.max(0, Math.min(newX, maxX));
+      newY = Math.max(0, Math.min(newY, maxY));
+
+      panel.style.left = newX + 'px';
+      panel.style.top  = newY + 'px';
+    });
+  }
+
+  function stopDrag() {
+    if (!isDragging) return;
+    isDragging = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    panel.classList.remove('ata-dragging');
+  }
+
+  // 鼠标事件
+  hdr.addEventListener('mousedown', startDrag);
+  document.addEventListener('mousemove', onDrag);
+  document.addEventListener('mouseup', stopDrag);
+
+  // 触摸支持
+  hdr.addEventListener('touchstart', e => startDrag(e.touches[0]), { passive: false });
+  document.addEventListener('touchmove', e => { if (isDragging) e.preventDefault(); onDrag(e.touches[0]); }, { passive: false });
+  document.addEventListener('touchend', stopDrag);
+
+  /* =========================================================
+     调节面板大小（左下角手柄）- 优化版
   ========================================================= */
   const resizer = document.getElementById('ata-resizer');
-  let panelResize = false, _rX = 0, _rY = 0, _rW = 0, _rH = 0;
-  resizer.addEventListener('mousedown', e => {
+
+  let isResizing = false;
+  let resizeStartX = 0, resizeStartY = 0;
+  let resizeStartW = 0, resizeStartH = 0;
+  let rafId2 = null;
+
+  function startResize(e) {
     if (panel.classList.contains('collapsed')) return;
-    panelResize = true;
-    _rX = e.clientX; _rY = e.clientY;
-    _rW = panel.offsetWidth; _rH = panel.offsetHeight;
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartW = panel.offsetWidth;
+    resizeStartH = panel.offsetHeight;
+
     panel.style.right = 'auto';
-    e.preventDefault(); e.stopPropagation();
-  });
-  document.addEventListener('mousemove', e => {
-    if (!panelResize) return;
-    const w = Math.max(220, Math.min(600, _rW + (e.clientX - _rX)));
-    const h = Math.max(300, Math.min(800, _rH + (_rY - e.clientY)));
-    panel.style.width  = w + 'px';
-    panel.style.height = h + 'px';
-  });
-  document.addEventListener('mouseup', () => { panelResize = false; });
+    panel.style.bottom = 'auto';
+    panel.classList.add('ata-resizing');
+  }
+
+  function onResize(e) {
+    if (!isResizing) return;
+    if (rafId2) cancelAnimationFrame(rafId2);
+    rafId2 = requestAnimationFrame(() => {
+      // 左下角：向右拖增大宽度，向上拖增大高度
+      let newW = resizeStartW + (e.clientX - resizeStartX);
+      let newH = resizeStartH + (resizeStartY - e.clientY);
+
+      // 尺寸限制
+      newW = Math.max(220, Math.min(600, newW));
+      newH = Math.max(300, Math.min(800, newH));
+
+      panel.style.width  = newW + 'px';
+      panel.style.height = newH + 'px';
+    });
+  }
+
+  function stopResize() {
+    if (!isResizing) return;
+    isResizing = false;
+    if (rafId2) cancelAnimationFrame(rafId2);
+    panel.classList.remove('ata-resizing');
+  }
+
+  resizer.addEventListener('mousedown', startResize);
+  document.addEventListener('mousemove', onResize);
+  document.addEventListener('mouseup', stopResize);
+
+  // 触摸支持
+  resizer.addEventListener('touchstart', e => startResize(e.touches[0]), { passive: false });
+  document.addEventListener('touchmove', e => { if (isResizing) e.preventDefault(); onResize(e.touches[0]); }, { passive: false });
+  document.addEventListener('touchend', stopResize);
 
   /* =========================================================
      初始化：检测题目数量
