@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.1
+// @version      4.5.2
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区
 // @match        https://pcs.minutestars.com/*
@@ -729,7 +729,6 @@
     /* 面板收起 - 隐藏主体内容和日志 */
     #ata-panel.collapsed #ata-body { display:none !important; }
     #ata-panel.collapsed .ata-log-wrap { display:none !important; }
-    #ata-panel.collapsed .ata-resizer { display:none !important; }
     #ata-panel.collapsed .ata-hdr { border-radius:12px; }
     #ata-panel.collapsed { height:auto !important; overflow:visible !important; }
     /* 收起时隐藏收起按钮自身 */
@@ -737,28 +736,6 @@
     /* 展开时隐藏展开按钮 */
     #ata-expand-btn { display:none; }
     #ata-panel.collapsed #ata-expand-btn { display:inline-flex !important; }
-
-    /* 调节手柄 */
-    .ata-resizer{
-      position:absolute;bottom:0;left:0;
-      width:20px;height:20px;cursor:nesw-resize;
-      background:linear-gradient(315deg,transparent 40%,rgba(79,195,247,.6) 40%,rgba(79,195,247,.6) 60%,transparent 60%);
-      border-radius:0 0 0 14px;opacity:.7;
-      transition:opacity .2s,background .2s;
-      z-index:10;
-    }
-    .ata-resizer:hover{opacity:1;background:linear-gradient(315deg,transparent 35%,rgba(79,195,247,.9) 35%,rgba(79,195,247,.9) 65%,transparent 65%);}
-
-    /* 拖拽状态视觉反馈 */
-    #ata-panel.ata-dragging .ata-hdr,
-    #ata-panel.ata-resizing {
-      background:linear-gradient(135deg,#1a2a3e 0%,#1e3a52 100%);
-    }
-    #ata-panel.ata-dragging,
-    #ata-panel.ata-resizing {
-      user-select:none;
-      cursor:move;
-    }
 
     /* 答题状态条 */
     .ata-status-bar{
@@ -1084,9 +1061,6 @@
       <div class="ata-log-hdr">运行日志</div>
       <div class="ata-log" id="ata-log"></div>
     </div>
-
-    <!-- 调节手柄 -->
-    <div class="ata-resizer" id="ata-resizer" title="拖动调节大小"></div>
 
   </div>
 `;
@@ -2277,127 +2251,6 @@
 
 
 
-
-  /* =========================================================
-     拖拽面板（标题栏）- 优化版
-  ========================================================= */
-  const hdr = document.querySelector('.ata-hdr');
-  hdr.style.cursor = 'move';
-
-  let isDragging = false;
-  let dragOffsetX = 0, dragOffsetY = 0;
-  let rafId = null;
-
-  function startDrag(e) {
-    if (e.target.closest('button')) return;
-    e.preventDefault();
-    isDragging = true;
-
-    // 缓存初始尺寸和偏移
-    const rect = panel.getBoundingClientRect();
-    dragOffsetX = e.clientX - rect.left;
-    dragOffsetY = e.clientY - rect.top;
-
-    // 切换到 left/top 定位
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
-    panel.classList.add('ata-dragging');
-  }
-
-  function onDrag(e) {
-    if (!isDragging) return;
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(() => {
-      // 计算新位置
-      let newX = e.clientX - dragOffsetX;
-      let newY = e.clientY - dragOffsetY;
-
-      // 边界限制：不能拖出视口
-      const maxX = window.innerWidth - panel.offsetWidth;
-      const maxY = window.innerHeight - panel.offsetHeight;
-      newX = Math.max(0, Math.min(newX, maxX));
-      newY = Math.max(0, Math.min(newY, maxY));
-
-      panel.style.left = newX + 'px';
-      panel.style.top  = newY + 'px';
-    });
-  }
-
-  function stopDrag() {
-    if (!isDragging) return;
-    isDragging = false;
-    if (rafId) cancelAnimationFrame(rafId);
-    panel.classList.remove('ata-dragging');
-  }
-
-  // 鼠标事件
-  hdr.addEventListener('mousedown', startDrag);
-  document.addEventListener('mousemove', onDrag);
-  document.addEventListener('mouseup', stopDrag);
-
-  // 触摸支持
-  hdr.addEventListener('touchstart', e => startDrag(e.touches[0]), { passive: false });
-  document.addEventListener('touchmove', e => { if (isDragging) e.preventDefault(); onDrag(e.touches[0]); }, { passive: false });
-  document.addEventListener('touchend', stopDrag);
-
-  /* =========================================================
-     调节面板大小（左下角手柄）- 优化版
-  ========================================================= */
-  const resizer = document.getElementById('ata-resizer');
-
-  let isResizing = false;
-  let resizeStartX = 0, resizeStartY = 0;
-  let resizeStartW = 0, resizeStartH = 0;
-  let rafId2 = null;
-
-  function startResize(e) {
-    if (panel.classList.contains('collapsed')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    isResizing = true;
-
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    resizeStartW = panel.offsetWidth;
-    resizeStartH = panel.offsetHeight;
-
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
-    panel.classList.add('ata-resizing');
-  }
-
-  function onResize(e) {
-    if (!isResizing) return;
-    if (rafId2) cancelAnimationFrame(rafId2);
-    rafId2 = requestAnimationFrame(() => {
-      // 左下角：向右拖增大宽度，向上拖增大高度
-      let newW = resizeStartW + (e.clientX - resizeStartX);
-      let newH = resizeStartH + (resizeStartY - e.clientY);
-
-      // 尺寸限制
-      newW = Math.max(220, Math.min(600, newW));
-      newH = Math.max(300, Math.min(800, newH));
-
-      panel.style.width  = newW + 'px';
-      panel.style.height = newH + 'px';
-    });
-  }
-
-  function stopResize() {
-    if (!isResizing) return;
-    isResizing = false;
-    if (rafId2) cancelAnimationFrame(rafId2);
-    panel.classList.remove('ata-resizing');
-  }
-
-  resizer.addEventListener('mousedown', startResize);
-  document.addEventListener('mousemove', onResize);
-  document.addEventListener('mouseup', stopResize);
-
-  // 触摸支持
-  resizer.addEventListener('touchstart', e => startResize(e.touches[0]), { passive: false });
-  document.addEventListener('touchmove', e => { if (isResizing) e.preventDefault(); onResize(e.touches[0]); }, { passive: false });
-  document.addEventListener('touchend', stopResize);
 
   /* =========================================================
      初始化：检测题目数量
