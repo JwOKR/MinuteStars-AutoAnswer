@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.4.1
+// @version      4.4.6
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区
 // @match        https://pcs.minutestars.com/*
@@ -15,9 +15,14 @@
   'use strict';
 
   /* =========================================================
-     配置区（GM 持久化，面板可实时修改）
+     全局常量
   ========================================================= */
   const CFG_KEY = 'qxy_cfg_v4';
+  const SCRIPT_VERSION = GM_info.script.version;
+
+  /* =========================================================
+     配置区（GM 持久化，面板可实时修改）
+  ========================================================= */
 
   /** 默认配置 */
   const CFG_DEFAULT = {
@@ -717,6 +722,19 @@
     .ata-btn.blue:hover{background:rgba(79,195,247,.2);}
     .ata-btn.purple{background:rgba(167,139,250,.12);color:#a78bfa;border-color:rgba(167,139,250,.25);font-size:11px;padding:5px 10px;}
     .ata-btn.purple:hover{background:rgba(167,139,250,.2);}
+    .ata-btn.yellow{background:rgba(251,191,36,.12);color:#fbbf24;border-color:rgba(251,191,36,.25);}
+    .ata-btn.yellow:hover{background:rgba(251,191,36,.2);}
+
+    /* 面板收起 */
+    .ata-panel.collapsed #ata-body,
+    .ata-panel.collapsed .ata-log-wrap { display:none; }
+    .ata-panel.collapsed .ata-hdr { border-radius:12px; }
+    .ata-panel.collapsed { height:auto; }
+    /* 收起时隐藏收起按钮自身 */
+    #ata-panel.collapsed #ata-collapse-panel { display:none; }
+    /* 展开时隐藏展开按钮 */
+    #ata-expand-btn { display:none; }
+    #ata-panel.collapsed #ata-expand-btn { display:inline-flex; }
 
     /* 答题状态条 */
     .ata-status-bar{
@@ -909,9 +927,14 @@
         <div class="ata-hdr-title">千寻宜 MinuteStars 答题器</div>
         <div class="ata-hdr-sub">题库 <span id="ata-lib-count">${LibraryManager.count + Object.keys(BUILTIN_DB).length}</span> 条</div>
       </div>
-      <span class="ata-hdr-ver">v4.4.0</span>
+      <span class="ata-hdr-ver">${SCRIPT_VERSION}</span>
+      <button class="ata-close-btn" id="ata-collapse-panel" title="收起面板">▼</button>
+      <button class="ata-close-btn" id="ata-expand-btn" title="展开面板">▲</button>
       <button class="ata-close-btn" id="ata-close" title="关闭面板">✕</button>
     </div>
+
+    <!-- 面板主体（收起时隐藏） -->
+    <div id="ata-body">
 
     <!-- 统计卡片 -->
     <div class="ata-stats">
@@ -952,6 +975,7 @@
     <div class="ata-actions">
       <div class="ata-btn-row">
         <button class="ata-btn green"  id="ata-start">▶ 开始答题</button>
+        <button class="ata-btn yellow" id="ata-pause" style="display:none">⏸ 暂停</button>
         <button class="ata-btn red"    id="ata-stop">■ 停止</button>
         <button class="ata-btn"        id="ata-reset">↺ 重置</button>
         <button class="ata-btn blue"   id="ata-submit">✔ 提交</button>
@@ -1034,6 +1058,8 @@
     <div class="ata-log-wrap">
       <div class="ata-log-hdr">运行日志</div>
       <div class="ata-log" id="ata-log"></div>
+    </div>
+
     </div>
   `;
   document.body.appendChild(panel);
@@ -1696,9 +1722,10 @@
     }
 
     // 单选/多选：answer 可以是 "A" / "A,B" / ["A","B"] 等
+    // 关键：先 split 再 norm，防止 norm 先吞掉逗号导致 "A,D" → "AD"
     const letters = Array.isArray(answer)
       ? answer.map(norm)
-      : norm(String(answer)).split(',').map(s => s.trim()).filter(Boolean);
+      : String(answer).split(',').map(s => norm(s.trim())).filter(Boolean);
 
     for (const i of inputs) {
       const v    = norm(i.value);
@@ -1876,10 +1903,18 @@
      主答题流程
   ========================================================= */
   let running = false;
+  let paused  = false;
+  let inCountdown = false;  // 是否处于提交倒计时阶段
+  let submitTickId = null;  // 提交倒计时 interval ID
+  let submitRem    = 0;     // 提交倒计时剩余秒数
 
   async function runAutoAnswer() {
     if (running) { uLog('已在运行，请勿重复点击', 'warn'); return; }
     running = true;
+    paused  = false;
+    inCountdown = false;
+    const pauseBtn = $('#ata-pause');
+    if (pauseBtn) { pauseBtn.style.display = ''; pauseBtn.textContent = '⏸ 暂停'; pauseBtn.className = 'ata-btn yellow'; }
     setRunningStatus('答题中…', 'running');
     uLog('=== 开始自动答题 ===', 'ok');
 
@@ -1941,6 +1976,14 @@
         if (statHit)  statHit.textContent   = ok + infer;
         if (statMiss) statMiss.textContent  = skip;
         setRunningStatus('答题中 ' + (i+1) + '/' + containers.length + ' 题 ' + pct + '%', 'running');
+
+        // 暂停时阻塞，直到用户点继续
+        while (paused && running) {
+          setRunningStatus('⏸ 已暂停 ' + (i+1) + '/' + containers.length + ' 题 ' + pct + '%', 'running');
+          await sleep(300);
+        }
+        if (!running) break;
+
         await sleep(CFG.answerDelay + Math.random() * 200);
       }
 
@@ -1949,21 +1992,50 @@
 
       if (CFG.autoSubmit) {
         const [minS, maxS] = [CFG.submitDelayMin, CFG.submitDelayMax];
-        const delaySec = minS + Math.floor(Math.random() * (maxS - minS + 1));
-        uLog('⏳ ' + delaySec + ' 秒后自动提交…', 'warn');
-        let rem = delaySec;
-        const tick = setInterval(() => {
-          rem--;
-          setRunningStatus('⏳ ' + rem + ' 秒后提交…', 'running');
-          if (rem <= 0) { clearInterval(tick); doSubmit(); }
-        }, 1000);
+        submitRem = minS + Math.floor(Math.random() * (maxS - minS + 1));
+        uLog('⏳ ' + submitRem + ' 秒后自动提交…（可暂停倒计时）', 'warn');
+        inCountdown = true;
+        const pBtn = $('#ata-pause');
+        if (pBtn) {
+          pBtn.style.display = '';
+          pBtn.textContent = '⏸ 暂停倒计时';
+          pBtn.className = 'ata-btn orange';
+        }
+        const startTick = () => {
+          clearInterval(submitTickId);
+          submitTickId = setInterval(() => {
+            if (paused) {
+              // 暂停时每秒刷新剩余秒数显示
+              if (inCountdown && submitRem > 0) {
+                setRunningStatus('⏸ 倒计时已暂停（剩余 ' + submitRem + 's）', 'running');
+              }
+              return;
+            }
+            submitRem--;
+            if (inCountdown) {
+              setRunningStatus('⏳ ' + submitRem + ' 秒后提交…', 'running');
+            }
+            if (submitRem <= 0) {
+              clearInterval(submitTickId);
+              submitTickId = null;
+              doSubmit();
+            }
+          }, 1000);
+        };
+        startTick();
       }
     } catch (e) {
       uLog('运行出错: ' + e.message, 'err');
       setRunningStatus('❌ 出错', 'idle');
       console.error(e);
     }
+    clearInterval(submitTickId);
+    submitTickId = null;
     running = false;
+    paused  = false;
+    inCountdown = false;
+    const pBtn2 = $('#ata-pause');
+    if (pBtn2) { pBtn2.style.display = 'none'; pBtn2.textContent = '⏸ 暂停'; pBtn2.className = 'ata-btn yellow'; }
   }
 
   /* =========================================================
@@ -2087,8 +2159,49 @@
      按钮事件绑定
   ========================================================= */
   $('#ata-start').addEventListener('click', runAutoAnswer);
+
+  $('#ata-pause').addEventListener('click', () => {
+    const btn = $('#ata-pause');
+    if (!btn) return;
+    // 答题阶段需要 running=true；倒计时阶段只需要 inCountdown=true
+    if (!running && !inCountdown) return;
+    if (!paused) {
+      // 暂停
+      paused = true;
+      if (inCountdown) {
+        btn.textContent = '▶ 继续倒计时';
+        btn.className = 'ata-btn orange';
+        setRunningStatus('⏸ 倒计时已暂停（剩余 ' + submitRem + 's）', 'running');
+        uLog('⏸ 倒计时已暂停（可再次点击继续）', 'warn');
+      } else {
+        btn.textContent = '▶ 继续';
+        btn.className = 'ata-btn green';
+        setRunningStatus('⏸ 已暂停', 'running');
+        uLog('⏸ 已暂停（可再次点击继续）', 'warn');
+      }
+    } else {
+      // 继续
+      paused = false;
+      if (inCountdown) {
+        btn.textContent = '⏸ 暂停倒计时';
+        btn.className = 'ata-btn orange';
+        uLog('▶ 继续倒计时', 'ok');
+      } else {
+        btn.textContent = '⏸ 暂停';
+        btn.className = 'ata-btn yellow';
+        uLog('▶ 继续答题', 'ok');
+      }
+    }
+  });
+
   $('#ata-stop').addEventListener('click', () => {
     running = false;
+    paused  = false;
+    inCountdown = false;
+    clearInterval(submitTickId);
+    submitTickId = null;
+    const btn = $('#ata-pause');
+    if (btn) { btn.style.display = 'none'; btn.textContent = '⏸ 暂停'; btn.className = 'ata-btn yellow'; }
     setRunningStatus('已停止', 'idle');
     uLog('已手动停止', 'warn');
   });
@@ -2103,9 +2216,25 @@
     ['ata-stat-total','ata-stat-answered','ata-stat-hit','ata-stat-miss'].forEach(id => {
       const el = $(id); if (el) el.textContent = '0';
     });
+    running = false; paused = false; inCountdown = false;
+    clearInterval(submitTickId); submitTickId = null;
+    const pBtn = $('#ata-pause');
+    if (pBtn) { pBtn.style.display = 'none'; pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
     uLog('已重置', 'info');
   });
   $('#ata-close').addEventListener('click', () => { panel.style.display = 'none'; });
+
+  $('#ata-collapse-panel').addEventListener('click', () => {
+    const collapsed = panel.classList.toggle('collapsed');
+    $('#ata-collapse-panel').textContent = collapsed ? '▲' : '▼';
+    $('#ata-collapse-panel').title = collapsed ? '展开面板' : '收起面板';
+  });
+
+  $('#ata-expand-btn').addEventListener('click', () => {
+    panel.classList.remove('collapsed');
+    $('#ata-collapse-panel').textContent = '▼';
+    $('#ata-collapse-panel').title = '收起面板';
+  });
 
   /* =========================================================
      拖拽面板
