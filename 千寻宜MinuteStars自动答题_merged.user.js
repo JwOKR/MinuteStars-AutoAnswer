@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.11
+// @version      4.5.12
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1608,41 +1608,67 @@
     let added = 0, skipped = 0;
     const preview = [];
 
-    for (const p of paras) {
-      // 提取段落内所有 <w:t> 文本节点并拼接（跨 run 还原段落完整文字）
+    // 先把所有段落文本收集起来
+    const allTexts = Array.from(paras).map(p => {
       const tNodes = p.getElementsByTagNameNS('*', 't');
-      const paraText = Array.from(tNodes).map(n => n.textContent || '').join('');
-      if (!paraText.trim()) continue;
+      return Array.from(tNodes).map(n => n.textContent || '').join('');
+    });
+
+    for (let i = 0; i < allTexts.length; i++) {
+      const line = allTexts[i];
+      if (!line.trim()) continue;
 
       // 以数字+分隔符开头的行才是题目
-      if (!/^\d+[\.、\s　]/.test(paraText)) continue;
+      if (!/^\d+[\.、\s　]/.test(line)) continue;
+
+      // 收集从本题开始到下一题之前的所有连续行
+      const qLines = [line];
+      for (let j = i + 1; j < allTexts.length; j++) {
+        const nextLine = allTexts[j];
+        // 遇到下一题停止
+        if (/^\d+[\.、\s　]/.test(nextLine)) break;
+        // 遇到空行停止（题目和答案之间可能有空行）
+        if (!nextLine.trim()) break;
+        // 遇到"答案："或"解析："停止（后续是答案和解析）
+        if (/^(答案|解析)[：:]/.test(nextLine.trim())) break;
+        qLines.push(nextLine);
+      }
+
+      // 合并所有行作为题目内容
+      const fullText = qLines.join('\n');
 
       // 提取 "答案：X" 部分
-      const ansMatch = paraText.match(/答案[：:]\s*([A-Za-z,，]+)/);
+      const ansMatch = fullText.match(/答案[：:]\s*([A-Za-z,，]+)/);
       if (!ansMatch) continue;
 
-      // 去掉末尾的 "答案：X  解析：..." 取题目文本
-      const rawQ = paraText.replace(/答案[：:]\s*[A-Za-z,，]+.*$/, '').trim();
+      // 只保留题目部分（去掉答案和解析）
+      let qText = fullText
+        .replace(/答案[：:]\s*[A-Za-z,，]+.*$/, '')  // 去掉答案及之后
+        .replace(/解析[：:].*$/gm, '')                 // 去掉所有解析行
+        .trim();
 
       // 去掉题号前缀和末尾出题人括号
-      let qText = rawQ
+      qText = qText
         .replace(/^\d+[\.、\s　]+/, '')
         .replace(/\s*\（[^）]*\）\s*$/, '')
         .replace(/\s*\([^)]*\)\s*$/, '')
         .trim();
+
+      // 清理多余空行，只保留题目和选项
+      qText = qText.split('\n').filter(l => l.trim()).join('\n');
+
       if (qText.length < 4) { skipped++; continue; }
 
       // 解析答案
       let answer = ansMatch[1].toUpperCase().replace(/，/g, ',');
 
       // 多选题：多个字母之间没有逗号的，自动加上英文逗号
-      // 例如 "AB" → "A,B"，"ABC" → "A,B,C"
       if (/^[A-Z]+$/.test(answer) && answer.length > 1) {
         answer = answer.split('').join(',');
       }
 
       // 判断题（A.对 / B.错 → true/false）
-      if (/对/.test(paraText) && /错/.test(paraText)) {
+      if (/对/.test(fullText) && /错/.test(fullText)) {
         answer = (answer === 'A') ? 'true' : 'false';
       }
 
