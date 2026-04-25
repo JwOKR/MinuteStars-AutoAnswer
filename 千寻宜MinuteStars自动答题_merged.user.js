@@ -733,15 +733,16 @@
     .ata-btn.yellow:hover{background:rgba(251,191,36,.2);}
 
     /* 面板收起 - 隐藏主体内容和日志 */
-    #ata-panel.collapsed #ata-body { display:none; }
-    #ata-panel.collapsed .ata-log-wrap { display:none; }
+    #ata-panel.collapsed #ata-body { display:none !important; }
+    #ata-panel.collapsed .ata-log-wrap { display:none !important; }
+    #ata-panel.collapsed #ata-resize-handle { display:none !important; }
     #ata-panel.collapsed .ata-hdr { border-radius:12px; }
-    #ata-panel.collapsed { height:auto; }
+    #ata-panel.collapsed { height:auto !important; overflow:visible !important; }
     /* 收起时隐藏收起按钮自身 */
-    #ata-panel.collapsed #ata-collapse-panel { display:none; }
+    #ata-panel.collapsed #ata-collapse-panel { display:none !important; }
     /* 展开时隐藏展开按钮 */
     #ata-expand-btn { display:none; }
-    #ata-panel.collapsed #ata-expand-btn { display:inline-flex; }
+    #ata-panel.collapsed #ata-expand-btn { display:inline-flex !important; }
 
     /* 答题状态条 */
     .ata-status-bar{
@@ -2257,23 +2258,29 @@
   });
 
   /* =========================================================
-     手动调整面板大小
+     手动调整面板大小（左下角手柄）
   ========================================================= */
-  let resizing = false, rStartX = 0, rStartY = 0, rStartW = 0, rStartH = 0;
+  let resizing = false, rStartX = 0, rStartY = 0, rStartW = 0, rStartH = 0, rStartLeft = 0;
   const resizeHandle = $('#ata-resize-handle');
   if (resizeHandle) {
     resizeHandle.addEventListener('mousedown', e => {
       resizing = true;
       rStartX = e.clientX; rStartY = e.clientY;
       rStartW = panel.offsetWidth; rStartH = panel.offsetHeight;
+      rStartLeft = panel.offsetLeft;
       e.preventDefault(); e.stopPropagation();
     });
     document.addEventListener('mousemove', e => {
       if (!resizing) return;
-      const newW = Math.max(280, rStartW + (e.clientX - rStartX));
-      const newH = Math.max(200, rStartH + (e.clientY - rStartY));
+      const deltaX = e.clientX - rStartX;
+      const deltaY = e.clientY - rStartY;
+      // 左边手柄：向右拖动 = 宽度增加（向左扩展），同时调整 left
+      const newW = Math.max(280, rStartW + deltaX);
+      const newH = Math.max(200, rStartH + deltaY);
       panel.style.width = newW + 'px';
       panel.style.height = newH + 'px';
+      panel.style.left = (rStartLeft - deltaX) + 'px';
+      panel.style.right = 'auto'; // 切换到 left 定位后需要清除 right
     });
     document.addEventListener('mouseup', () => { resizing = false; });
   }
