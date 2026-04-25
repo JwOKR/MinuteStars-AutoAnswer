@@ -2260,27 +2260,35 @@
   /* =========================================================
      手动调整面板大小（左下角手柄）
   ========================================================= */
-  let resizing = false, rStartX = 0, rStartY = 0, rStartW = 0, rStartH = 0, rStartLeft = 0;
+  let resizing = false;
+  let rStartX = 0, rStartY = 0, rStartW = 0, rStartH = 0;
+  let rStartLeft = 0, rStartTop = 0;
   const resizeHandle = $('#ata-resize-handle');
   if (resizeHandle) {
     resizeHandle.addEventListener('mousedown', e => {
       resizing = true;
-      rStartX = e.clientX; rStartY = e.clientY;
-      rStartW = panel.offsetWidth; rStartH = panel.offsetHeight;
+      rStartX = e.clientX;
+      rStartY = e.clientY;
+      rStartW = panel.offsetWidth;
+      rStartH = panel.offsetHeight;
       rStartLeft = panel.offsetLeft;
-      e.preventDefault(); e.stopPropagation();
+      rStartTop = panel.offsetTop;
+      e.preventDefault();
+      e.stopPropagation();
     });
     document.addEventListener('mousemove', e => {
       if (!resizing) return;
       const deltaX = e.clientX - rStartX;
       const deltaY = e.clientY - rStartY;
-      // 左边手柄：向右拖动 = 宽度增加（向左扩展），同时调整 left
+      // 左下角手柄：向右拖 = 宽度+，左边不动
+      // 向左拖 = 宽度-，同时 left 往右移
       const newW = Math.max(280, rStartW + deltaX);
       const newH = Math.max(200, rStartH + deltaY);
+      const newLeft = deltaX < 0 ? rStartLeft + deltaX : rStartLeft;
       panel.style.width = newW + 'px';
       panel.style.height = newH + 'px';
-      panel.style.left = (rStartLeft - deltaX) + 'px';
-      panel.style.right = 'auto'; // 切换到 left 定位后需要清除 right
+      panel.style.left = newLeft + 'px';
+      panel.style.right = 'auto';
     });
     document.addEventListener('mouseup', () => { resizing = false; });
   }
