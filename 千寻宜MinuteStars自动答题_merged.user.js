@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.16
+// @version      4.5.17
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1676,11 +1676,6 @@
       // 多选题：多个字母之间没有逗号的，自动加上英文逗号
       if (/^[A-Z]+$/.test(answer) && answer.length > 1) {
         answer = answer.split('').join(',');
-      }
-
-      // 判断题（A.对 / B.错 → true/false）
-      if (/对/.test(fullText) && /错/.test(fullText)) {
-        answer = (answer === 'A') ? 'true' : 'false';
       }
 
       if (!qText || !answer) { skipped++; continue; }
