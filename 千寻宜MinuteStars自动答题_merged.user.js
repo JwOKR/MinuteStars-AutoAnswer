@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.14
+// @version      4.5.15
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1394,7 +1394,14 @@
         </div>
 
         <div class="ata-pane" id="pane-browse">
-          <input id="ata-lib-search" placeholder="🔍 搜索题目关键词..." />
+          <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+            <input id="ata-lib-search" placeholder="🔍 搜索题目..." style="flex:1;min-width:150px" />
+            <select id="ata-lib-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0">
+              <option value="all">全部题目</option>
+              <option value="single">单选/判断</option>
+              <option value="multi">多选题</option>
+            </select>
+          </div>
           <div style="overflow:auto;max-height:400px">
             <table class="ata-lib-table">
               <thead><tr><th>题目</th><th>答案</th><th>操作</th></tr></thead>
@@ -1403,8 +1410,10 @@
           </div>
           <div class="ata-lib-pager">
             <span id="ata-pager-info">共 0 条</span>
-            <div style="display:flex;gap:4px">
+            <div style="display:flex;gap:4px;align-items:center">
               <button class="ata-btn" id="ata-pager-prev">◀</button>
+              <input id="ata-pager-jump" type="number" min="1" placeholder="页码" style="width:50px;padding:4px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;text-align:center" />
+              <button class="ata-btn" id="ata-pager-jump-btn">跳转</button>
               <button class="ata-btn" id="ata-pager-next">▶</button>
             </div>
           </div>
@@ -1820,11 +1829,25 @@
   // 浏览题库（分页）
   let currentPage = 1;
   const PAGE_SIZE = 20;
+
+  // 判断答案类型
+  function isMultiChoice(answer) {
+    const a = String(answer);
+    return a.includes(',') || a === 'true' || a === 'false' ? false : a.length > 1;
+  }
+
   function renderBrowse(page) {
     currentPage = page;
     const keyword = ($('#ata-lib-search') ? $('#ata-lib-search').value : '').toLowerCase();
+    const filter  = ($('#ata-lib-filter') ? $('#ata-lib-filter').value : 'all');
     const db      = getMergedDB();
-    const entries = Object.entries(db).filter(([q]) => q.toLowerCase().includes(keyword));
+    const entries = Object.entries(db)
+      .filter(([q]) => q.toLowerCase().includes(keyword))
+      .filter(([, a]) => {
+        if (filter === 'single') return !isMultiChoice(a);
+        if (filter === 'multi')  return isMultiChoice(a);
+        return true;
+      });
     const total   = entries.length;
     const start   = (page - 1) * PAGE_SIZE;
     const slice   = entries.slice(start, start + PAGE_SIZE);
@@ -1848,10 +1871,18 @@
     $('#ata-pager-info').textContent = '共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页';
     $('#ata-pager-prev').disabled = page <= 1;
     $('#ata-pager-next').disabled = start + PAGE_SIZE >= total;
+    $('#ata-pager-jump').max = totalPages;
   }
   $('#ata-lib-search').addEventListener('input', () => renderBrowse(1));
+  $('#ata-lib-filter').addEventListener('change', () => renderBrowse(1));
   $('#ata-pager-prev').addEventListener('click', () => { if (currentPage > 1) renderBrowse(currentPage - 1); });
   $('#ata-pager-next').addEventListener('click', () => renderBrowse(currentPage + 1));
+  $('#ata-pager-jump-btn').addEventListener('click', () => {
+    const jumpPage = parseInt($('#ata-pager-jump').value);
+    const totalPages = Math.max(1, Math.ceil(Object.entries(getMergedDB()).length / PAGE_SIZE));
+    if (jumpPage >= 1 && jumpPage <= totalPages) renderBrowse(jumpPage);
+  });
+  $('#ata-pager-jump').addEventListener('keypress', e => { if (e.key === 'Enter') $('#ata-pager-jump-btn').click(); });
   $('#ata-lib-tbody').addEventListener('click', e => {
     if (e.target.classList.contains('del-btn')) {
       LibraryManager.remove(e.target.dataset.q);
