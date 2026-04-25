@@ -741,13 +741,13 @@
     /* 调节手柄 */
     .ata-resizer{
       position:absolute;bottom:0;left:0;
-      width:18px;height:18px;cursor:nesw-resize;
-      background:linear-gradient(225deg,transparent 50%,rgba(79,195,247,.5) 50%);
-      border-radius:0 0 0 14px;opacity:.6;
-      transition:opacity .15s;
+      width:20px;height:20px;cursor:nesw-resize;
+      background:linear-gradient(315deg,transparent 40%,rgba(79,195,247,.6) 40%,rgba(79,195,247,.6) 60%,transparent 60%);
+      border-radius:0 0 0 14px;opacity:.7;
+      transition:opacity .2s,background .2s;
       z-index:10;
     }
-    .ata-resizer:hover{opacity:1;}
+    .ata-resizer:hover{opacity:1;background:linear-gradient(315deg,transparent 35%,rgba(79,195,247,.9) 35%,rgba(79,195,247,.9) 65%,transparent 65%);}
 
     /* 答题状态条 */
     .ata-status-bar{
@@ -2266,44 +2266,46 @@
 
 
   /* =========================================================
-     拖拽面板
+     拖拽面板（标题栏）
   ========================================================= */
-  let drag = false, _dx = 0, _dy = 0;
-  panel.addEventListener('mousedown', e => {
-    if (!['INPUT','TEXTAREA','BUTTON','SELECT'].includes(e.target.tagName)) {
-      drag = true; _dx = e.clientX - panel.offsetLeft; _dy = e.clientY - panel.offsetTop;
-    }
-  });
-  document.addEventListener('mousemove', e => {
-    if (!drag) return;
-    panel.style.left  = (e.clientX - _dx) + 'px';
-    panel.style.top   = (e.clientY - _dy) + 'px';
+  const hdr = document.querySelector('.ata-hdr');
+  let panelDrag = false, _pX = 0, _pY = 0;
+  hdr.style.cursor = 'move';
+  hdr.addEventListener('mousedown', e => {
+    if (e.target.closest('button')) return;
+    panelDrag = true;
+    _pX = e.clientX - panel.offsetLeft;
+    _pY = e.clientY - panel.offsetTop;
     panel.style.right = 'auto';
   });
-  document.addEventListener('mouseup', () => { drag = false; });
+  document.addEventListener('mousemove', e => {
+    if (!panelDrag) return;
+    panel.style.left = (e.clientX - _pX) + 'px';
+    panel.style.top  = (e.clientY - _pY) + 'px';
+  });
+  document.addEventListener('mouseup', () => { panelDrag = false; });
 
   /* =========================================================
      调节面板大小（左下角手柄）
   ========================================================= */
   const resizer = document.getElementById('ata-resizer');
-  let resizing = false, _rX = 0, _rY = 0, _rW = 0, _rH = 0;
+  let panelResize = false, _rX = 0, _rY = 0, _rW = 0, _rH = 0;
   resizer.addEventListener('mousedown', e => {
     if (panel.classList.contains('collapsed')) return;
-    resizing = true;
+    panelResize = true;
     _rX = e.clientX; _rY = e.clientY;
     _rW = panel.offsetWidth; _rH = panel.offsetHeight;
     panel.style.right = 'auto';
-    e.stopPropagation(); e.preventDefault();
+    e.preventDefault(); e.stopPropagation();
   });
   document.addEventListener('mousemove', e => {
-    if (!resizing) return;
-    // 左下角：向右拖增大宽度，向上拖增大高度
+    if (!panelResize) return;
     const w = Math.max(220, Math.min(600, _rW + (e.clientX - _rX)));
     const h = Math.max(300, Math.min(800, _rH + (_rY - e.clientY)));
     panel.style.width  = w + 'px';
     panel.style.height = h + 'px';
   });
-  document.addEventListener('mouseup', () => { resizing = false; });
+  document.addEventListener('mouseup', () => { panelResize = false; });
 
   /* =========================================================
      初始化：检测题目数量
