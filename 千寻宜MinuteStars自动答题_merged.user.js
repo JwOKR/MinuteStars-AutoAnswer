@@ -740,10 +740,10 @@
 
     /* 调节手柄 */
     .ata-resizer{
-      position:absolute;bottom:0;right:0;
-      width:18px;height:18px;cursor:nwse-resize;
-      background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.5) 50%);
-      border-radius:0 0 14px 0;opacity:.6;
+      position:absolute;bottom:0;left:0;
+      width:18px;height:18px;cursor:nesw-resize;
+      background:linear-gradient(225deg,transparent 50%,rgba(79,195,247,.5) 50%);
+      border-radius:0 0 0 14px;opacity:.6;
       transition:opacity .15s;
       z-index:10;
     }
@@ -2283,7 +2283,7 @@
   document.addEventListener('mouseup', () => { drag = false; });
 
   /* =========================================================
-     调节面板大小
+     调节面板大小（左下角手柄）
   ========================================================= */
   const resizer = document.getElementById('ata-resizer');
   let resizing = false, _rX = 0, _rY = 0, _rW = 0, _rH = 0;
@@ -2293,13 +2293,13 @@
     _rX = e.clientX; _rY = e.clientY;
     _rW = panel.offsetWidth; _rH = panel.offsetHeight;
     panel.style.right = 'auto';
-    panel.style.top = panel.offsetTop + 'px';
     e.stopPropagation(); e.preventDefault();
   });
   document.addEventListener('mousemove', e => {
     if (!resizing) return;
+    // 左下角：向右拖增大宽度，向上拖增大高度
     const w = Math.max(220, Math.min(600, _rW + (e.clientX - _rX)));
-    const h = Math.max(300, Math.min(800, _rH + (e.clientY - _rY)));
+    const h = Math.max(300, Math.min(800, _rH + (_rY - e.clientY)));
     panel.style.width  = w + 'px';
     panel.style.height = h + 'px';
   });
