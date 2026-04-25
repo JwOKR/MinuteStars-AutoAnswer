@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.2
+// @version      4.5.3
 // @author       JIA
-// @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区
+// @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 左下角调整大小
 // @match        https://pcs.minutestars.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -737,6 +737,16 @@
     #ata-expand-btn { display:none; }
     #ata-panel.collapsed #ata-expand-btn { display:inline-flex !important; }
 
+    /* 拖拽和调整大小 */
+    .ata-hdr{cursor:move;}
+    #ata-resize-handle{
+      position:absolute;bottom:0;left:0;width:20px;height:20px;
+      cursor:nwse-resize;z-index:10;
+      background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.4) 50%);
+      border-radius:0 0 0 12px;
+    }
+    #ata-resize-handle:hover{background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.7) 50%);}
+
     /* 答题状态条 */
     .ata-status-bar{
       margin:4px 12px 6px;
@@ -1064,6 +1074,11 @@
 
   </div>
 `;
+  // 添加左下角调整大小手柄
+  const resizeHandle = document.createElement('div');
+  resizeHandle.id = 'ata-resize-handle';
+  panel.appendChild(resizeHandle);
+
   document.body.appendChild(panel);
 
   /* =========================================================
@@ -2251,6 +2266,61 @@
 
 
 
+
+  /* =========================================================
+     拖拽移动面板
+  ========================================================= */
+  let isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
+  const hdr = panel.querySelector('.ata-hdr');
+
+  hdr.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button')) return;
+    isDragging = true;
+    dragOffsetX = e.clientX - panel.offsetLeft;
+    dragOffsetY = e.clientY - panel.offsetTop;
+    hdr.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    panel.style.right = 'auto';
+    panel.style.left = (e.clientX - dragOffsetX) + 'px';
+    panel.style.top = (e.clientY - dragOffsetY) + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      hdr.style.cursor = 'move';
+    }
+  });
+
+  /* =========================================================
+     左下角调整大小
+  ========================================================= */
+  let isResizing = false, resizeStartX = 0, resizeStartY = 0, resizeStartW = 0, resizeStartH = 0;
+  const rsz = document.getElementById('ata-resize-handle');
+
+  rsz.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartW = panel.offsetWidth;
+    resizeStartH = panel.offsetHeight;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const newW = Math.max(200, resizeStartW + (e.clientX - resizeStartX));
+    const newH = Math.max(150, resizeStartH + (e.clientY - resizeStartY));
+    panel.style.width = newW + 'px';
+    panel.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => { isResizing = false; });
 
   /* =========================================================
      初始化：检测题目数量
