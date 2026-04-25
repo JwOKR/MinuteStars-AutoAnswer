@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.5
+// @version      4.5.6
 // @author       JIA
-// @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + Alt+拖拽调整大小
+// @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -739,6 +739,19 @@
 
     /* 拖拽和调整大小 */
     .ata-hdr{cursor:move;user-select:none;}
+    .ata-resize-handle{
+      position:absolute;z-index:10;background:transparent;
+      /* 四边手柄 */
+    }
+    .ata-resize-n{top:-3px;left:20px;right:20px;height:6px;cursor:n-resize;}
+    .ata-resize-s{bottom:-3px;left:20px;right:20px;height:6px;cursor:s-resize;}
+    .ata-resize-w{left:-3px;top:20px;bottom:20px;width:6px;cursor:w-resize;}
+    .ata-resize-e{right:-3px;top:20px;bottom:20px;width:6px;cursor:e-resize;}
+    /* 四角手柄 */
+    .ata-resize-nw{top:-3px;left:-3px;width:16px;height:16px;cursor:nw-resize;}
+    .ata-resize-ne{top:-3px;right:-3px;width:16px;height:16px;cursor:ne-resize;}
+    .ata-resize-sw{bottom:-3px;left:-3px;width:16px;height:16px;cursor:sw-resize;}
+    .ata-resize-se{bottom:-3px;right:-3px;width:16px;height:16px;cursor:se-resize;}
 
     /* 答题状态条 */
     .ata-status-bar{
@@ -1068,6 +1081,14 @@
   </div>
 `;
   document.body.appendChild(panel);
+
+  // 添加8方向调整大小手柄（隐藏）
+  ['n','ne','e','se','s','sw','w','nw'].forEach(dir => {
+    const h = document.createElement('div');
+    h.className = `ata-resize-handle ata-resize-${dir}`;
+    h.dataset.dir = dir;
+    panel.appendChild(h);
+  });
 
   /* =========================================================
      题库管理弹窗
@@ -2256,23 +2277,28 @@
 
 
   /* =========================================================
-     拖拽移动 / Alt+拖拽调整大小
+     拖拽移动 / Alt+拖拽调整大小（8方向）
   ========================================================= */
-  let isDragging = false, isResizing = false;
-  let dragStartX = 0, dragStartY = 0, dragStartL = 0, dragStartT = 0;
+  let isDragging = false, isResizing = false, resizeDir = '';
+  let dragStartX = 0, dragStartY = 0;
   let resizeStartX = 0, resizeStartY = 0, resizeStartW = 0, resizeStartH = 0;
+  let resizeStartL = 0, resizeStartT = 0;
   const hdr = panel.querySelector('.ata-hdr');
   const minW = 200, minH = 150;
 
   hdr.addEventListener('mousedown', (e) => {
     if (e.target.closest('button')) return;
     if (e.altKey) {
-      // Alt+拖拽：调整大小（右下角扩展）
+      // Alt+拖拽：调整大小（默认右下角se）
       isResizing = true;
+      resizeDir = 'se';
       resizeStartX = e.clientX;
       resizeStartY = e.clientY;
       resizeStartW = panel.offsetWidth;
       resizeStartH = panel.offsetHeight;
+      resizeStartL = panel.offsetLeft;
+      resizeStartT = panel.offsetTop;
+      panel.style.right = 'auto';
     } else {
       // 普通拖拽：移动面板
       isDragging = true;
@@ -2283,12 +2309,38 @@
     e.preventDefault();
   });
 
+  // 8方向手柄resize（隐藏手柄，但功能保留）
+  document.querySelectorAll('.ata-resize-handle').forEach(rsz => {
+    rsz.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      resizeDir = rsz.dataset.dir;
+      resizeStartX = e.clientX;
+      resizeStartY = e.clientY;
+      resizeStartW = panel.offsetWidth;
+      resizeStartH = panel.offsetHeight;
+      resizeStartL = panel.offsetLeft;
+      resizeStartT = panel.offsetTop;
+      panel.style.right = 'auto';
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
+
   document.addEventListener('mousemove', (e) => {
     if (isResizing) {
-      const newW = Math.max(minW, resizeStartW + (e.clientX - resizeStartX));
-      const newH = Math.max(minH, resizeStartH + (e.clientY - resizeStartY));
+      const dx = e.clientX - resizeStartX;
+      const dy = e.clientY - resizeStartY;
+      let newW = resizeStartW, newH = resizeStartH, newL = resizeStartL, newT = resizeStartT;
+
+      if (resizeDir.includes('e')) newW = Math.max(minW, resizeStartW + dx);
+      if (resizeDir.includes('w')) { newW = Math.max(minW, resizeStartW - dx); newL = resizeStartL + (resizeStartW - newW); }
+      if (resizeDir.includes('s')) newH = Math.max(minH, resizeStartH + dy);
+      if (resizeDir.includes('n')) { newH = Math.max(minH, resizeStartH - dy); newT = resizeStartT + (resizeStartH - newH); }
+
       panel.style.width = newW + 'px';
       panel.style.height = newH + 'px';
+      panel.style.left = newL + 'px';
+      panel.style.top = newT + 'px';
     } else if (isDragging) {
       panel.style.right = 'auto';
       panel.style.left = (e.clientX - dragStartX) + 'px';
@@ -2299,6 +2351,7 @@
   document.addEventListener('mouseup', () => {
     isDragging = false;
     isResizing = false;
+    resizeDir = '';
     hdr.style.cursor = 'move';
   });
 
