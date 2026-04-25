@@ -1647,15 +1647,16 @@
         .replace(/解析[：:].*$/gm, '')                 // 去掉所有解析行
         .trim();
 
-      // 去掉题号前缀和末尾出题人括号
+      // 去掉题号前缀，保留出题人
       qText = qText
-        .replace(/^\d+[\.、\s　]+/, '')
-        .replace(/\s*\（[^）]*\）\s*$/, '')
-        .replace(/\s*\([^)]*\)\s*$/, '')
+        .replace(/^\d+[\.、\s　]+/, '')  // 只去掉题号
         .trim();
 
-      // 清理多余空行，只保留题目和选项
-      qText = qText.split('\n').filter(l => l.trim()).join('\n');
+      // 只保留题干（过滤掉选项行 A. B. C. D. 等）
+      qText = qText.split('\n')
+        .filter(l => !/^[A-Za-z][\.、　\s]/.test(l.trim()))  // 去掉选项行
+        .filter(l => l.trim())                                // 过滤空行
+        .join('\n');
 
       if (qText.length < 4) { skipped++; continue; }
 
