@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.4.6
+// @version      4.5.0
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区
 // @match        https://pcs.minutestars.com/*
@@ -729,6 +729,7 @@
     /* 面板收起 - 隐藏主体内容和日志 */
     #ata-panel.collapsed #ata-body { display:none !important; }
     #ata-panel.collapsed .ata-log-wrap { display:none !important; }
+    #ata-panel.collapsed .ata-resizer { display:none !important; }
     #ata-panel.collapsed .ata-hdr { border-radius:12px; }
     #ata-panel.collapsed { height:auto !important; overflow:visible !important; }
     /* 收起时隐藏收起按钮自身 */
@@ -736,6 +737,17 @@
     /* 展开时隐藏展开按钮 */
     #ata-expand-btn { display:none; }
     #ata-panel.collapsed #ata-expand-btn { display:inline-flex !important; }
+
+    /* 调节手柄 */
+    .ata-resizer{
+      position:absolute;bottom:0;right:0;
+      width:18px;height:18px;cursor:nwse-resize;
+      background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.5) 50%);
+      border-radius:0 0 14px 0;opacity:.6;
+      transition:opacity .15s;
+      z-index:10;
+    }
+    .ata-resizer:hover{opacity:1;}
 
     /* 答题状态条 */
     .ata-status-bar{
@@ -1061,6 +1073,9 @@
       <div class="ata-log-hdr">运行日志</div>
       <div class="ata-log" id="ata-log"></div>
     </div>
+
+    <!-- 调节手柄 -->
+    <div class="ata-resizer" id="ata-resizer" title="拖动调节大小"></div>
 
   </div>
 `;
@@ -2266,6 +2281,29 @@
     panel.style.right = 'auto';
   });
   document.addEventListener('mouseup', () => { drag = false; });
+
+  /* =========================================================
+     调节面板大小
+  ========================================================= */
+  const resizer = document.getElementById('ata-resizer');
+  let resizing = false, _rX = 0, _rY = 0, _rW = 0, _rH = 0;
+  resizer.addEventListener('mousedown', e => {
+    if (panel.classList.contains('collapsed')) return;
+    resizing = true;
+    _rX = e.clientX; _rY = e.clientY;
+    _rW = panel.offsetWidth; _rH = panel.offsetHeight;
+    panel.style.right = 'auto';
+    panel.style.top = panel.offsetTop + 'px';
+    e.stopPropagation(); e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!resizing) return;
+    const w = Math.max(220, Math.min(600, _rW + (e.clientX - _rX)));
+    const h = Math.max(300, Math.min(800, _rH + (e.clientY - _rY)));
+    panel.style.width  = w + 'px';
+    panel.style.height = h + 'px';
+  });
+  document.addEventListener('mouseup', () => { resizing = false; });
 
   /* =========================================================
      初始化：检测题目数量
