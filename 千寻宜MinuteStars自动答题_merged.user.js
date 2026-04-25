@@ -726,10 +726,10 @@
     .ata-btn.yellow:hover{background:rgba(251,191,36,.2);}
 
     /* 面板收起 */
-    .ata-panel.collapsed #ata-body,
-    .ata-panel.collapsed .ata-log-wrap { display:none; }
-    .ata-panel.collapsed .ata-hdr { border-radius:12px; }
-    .ata-panel.collapsed { height:auto; }
+    #ata-panel.collapsed #ata-body,
+    #ata-panel.collapsed .ata-log-wrap { display:none; }
+    #ata-panel.collapsed .ata-hdr { border-radius:12px; }
+    #ata-panel.collapsed { height:auto; }
     /* 收起时隐藏收起按钮自身 */
     #ata-panel.collapsed #ata-collapse-panel { display:none; }
     /* 展开时隐藏展开按钮 */
