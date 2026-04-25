@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.18
+// @version      4.5.19
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1635,6 +1635,7 @@
     const db    = LibraryManager.load();
     let added = 0, skipped = 0;
     const preview = [];
+    const duplicates = [];
 
     // 先把所有段落文本收集起来
     const allTexts = Array.from(paras).map(p => {
@@ -1699,9 +1700,12 @@
 
       if (!qText || !answer) { skipped++; continue; }
 
-      // 去重
-      const isDup = Object.keys(db).some(k => cleanText(k) === cleanText(qText));
-      if (isDup) { skipped++; continue; }
+      // 去重（精确匹配）
+      if (db.hasOwnProperty(qText)) {
+        duplicates.push({ q: qText, oldAns: db[qText], newAns: answer });
+        skipped++;
+        continue;
+      }
 
       db[qText] = answer;
       added++;
@@ -1709,7 +1713,7 @@
     }
 
     LibraryManager.save(db);
-    return { added, skipped, errors: [], preview };
+    return { added, skipped, errors: [], preview, duplicates };
   }
 
   // Word 文档导入事件
@@ -1740,7 +1744,7 @@
         return;
       }
 
-      const { added, skipped, preview } = result;
+      const { added, skipped, preview, duplicates } = result;
       refreshLibCount();
       refreshStats();
       renderBrowse(1);
@@ -1756,9 +1760,21 @@
             if (added === 0 && skipped === 0) {
         showDocxMsg('❌ 未找到任何题目（请确认文档格式：需包含「答案：X」格式）', false);
       } else {
+        let dupHtml = '';
+        if (duplicates && duplicates.length > 0) {
+          const list = duplicates.slice(0, 10).map(d =>
+            `<div style="margin:4px 0;padding:4px;background:#2a2a2a;border-radius:4px;font-size:11px">
+              <div style="color:#ffa726">📌 ${escHtml(d.q.substring(0, 50))}${d.q.length > 50 ? '...' : ''}</div>
+              <div style="color:#888">旧答案：${escHtml(d.oldAns)} → 新答案：${escHtml(d.newAns)}</div>
+            </div>`
+          ).join('');
+          const more = duplicates.length > 10 ? `<div style="color:#888">...还有 ${duplicates.length - 10} 条重复</div>` : '';
+          dupHtml = `<div style="margin-top:8px"><b style="color:#fbbf24">⚠️ ${duplicates.length} 条重复（已覆盖）</b>${list}${more}</div>`;
+        }
         showDocxMsg(
           '✅ 成功导入 <b style="color:#66bb6a">' + added + '</b> 条' +
           (skipped > 0 ? '，跳过 <b style="color:#ffa726">' + skipped + '</b> 条（已存在）' : '') +
+          dupHtml +
           previewHtml,
           true
         );
