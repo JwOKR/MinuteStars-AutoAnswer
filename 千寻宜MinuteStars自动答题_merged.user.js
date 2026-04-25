@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.7
+// @version      4.5.8
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -634,8 +634,8 @@
       --nm-text: #1A1A1A;
       --nm-text-secondary: #888888;
       --nm-accent: #333333;
-      --nm-radius: 2px;
-      --nm-radius-lg: 4px;
+      --nm-radius: 8px;
+      --nm-radius-lg: 12px;
     }
 
     #ata-panel {
