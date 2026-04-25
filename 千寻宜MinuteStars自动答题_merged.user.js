@@ -641,9 +641,9 @@
     #ata-panel::-webkit-scrollbar-thumb{background:rgba(79,195,247,.4);border-radius:2px;}
     /* 手动调整大小的拖拽区域 */
     #ata-resize-handle{
-      position:absolute;bottom:0;right:0;width:16px;height:16px;
-      cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.3) 50%);
-      border-radius:0 0 14px 0;
+      position:absolute;bottom:0;left:0;width:16px;height:16px;
+      cursor:nesw-resize;background:linear-gradient(135deg,rgba(79,195,247,.3) 50%,transparent 50%);
+      border-radius:0 0 0 14px;
     }
 
     /* 顶部标题栏 */
@@ -732,8 +732,8 @@
     .ata-btn.yellow{background:rgba(251,191,36,.12);color:#fbbf24;border-color:rgba(251,191,36,.25);}
     .ata-btn.yellow:hover{background:rgba(251,191,36,.2);}
 
-    /* 面板收起 */
-    #ata-panel.collapsed #ata-body,
+    /* 面板收起 - 隐藏主体内容和日志 */
+    #ata-panel.collapsed #ata-body { display:none; }
     #ata-panel.collapsed .ata-log-wrap { display:none; }
     #ata-panel.collapsed .ata-hdr { border-radius:12px; }
     #ata-panel.collapsed { height:auto; }
@@ -1060,6 +1060,7 @@
       </div>
       <div id="cfg-save-msg" style="font-size:11px;color:#4ade80;margin-top:3px;height:16px"></div>
     </div>
+    </div><!-- end ata-body -->
 
     <!-- 底部日志 -->
     <div class="ata-log-wrap">
