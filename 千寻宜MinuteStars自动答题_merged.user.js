@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.9
+// @version      4.5.10
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1661,7 +1661,14 @@
     if (!file) return;
 
     if (!file.name.endsWith('.docx')) {
-      showDocxMsg('❌ 请选择 .docx 文件', false);
+      showDocxMsg('❌ 请选择 .docx 文件（不是 .doc）', false);
+      e.target.value = '';
+      return;
+    }
+
+    // 检查文件大小（过小可能是损坏或 .doc 伪装）
+    if (file.size < 500) {
+      showDocxMsg('❌ 文件过小（' + file.size + ' 字节），可能不是有效的 .docx', false);
       e.target.value = '';
       return;
     }
@@ -1702,7 +1709,18 @@
       }
     } catch (err) {
       console.error('[ATA] Docx parse error:', err);
-      showDocxMsg('❌ 解析失败：' + err.message, false);
+      let msg = '❌ 解析失败';
+      
+      // 区分不同错误类型
+      if (err.message.includes("Can't find end of central directory")) {
+        msg = '❌ 文件格式错误：请确认是 .docx 而非 .doc 格式<br><small style="color:#888">提示：.doc 是旧版 Word 格式，需要另存为 .docx 后重试</small>';
+      } else if (err.message.includes('load')) {
+        msg = '❌ 文件损坏或不是有效的 Word 文档';
+      } else {
+        msg = '❌ 解析失败：' + err.message;
+      }
+      
+      showDocxMsg(msg, false);
     }
 
     e.target.value = '';
