@@ -1754,6 +1754,15 @@
   }
 
   function doSubmit() {
+    // 清理倒计时状态
+    clearInterval(submitTickId);
+    submitTickId = null;
+    running = false;
+    paused  = false;
+    inCountdown = false;
+    const pBtn = $('#ata-pause');
+    if (pBtn) { pBtn.style.display = 'none'; pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
+    
     const sels = [
       // MinuteStars 专属提交按钮（优先）
       '#btnSubmitPapers',
@@ -2028,14 +2037,15 @@
       uLog('运行出错: ' + e.message, 'err');
       setRunningStatus('❌ 出错', 'idle');
       console.error(e);
+      // 出错时也要清理倒计时状态
+      clearInterval(submitTickId);
+      submitTickId = null;
+      running = false;
+      paused  = false;
+      inCountdown = false;
+      const pBtn = $('#ata-pause');
+      if (pBtn) { pBtn.style.display = 'none'; pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
     }
-    clearInterval(submitTickId);
-    submitTickId = null;
-    running = false;
-    paused  = false;
-    inCountdown = false;
-    const pBtn2 = $('#ata-pause');
-    if (pBtn2) { pBtn2.style.display = 'none'; pBtn2.textContent = '⏸ 暂停'; pBtn2.className = 'ata-btn yellow'; }
   }
 
   /* =========================================================
