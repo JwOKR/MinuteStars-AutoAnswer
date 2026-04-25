@@ -633,11 +633,18 @@
       border:1px solid rgba(79,195,247,.35);border-radius:14px;
       padding:0;font-family:'Microsoft YaHei','PingFang SC',sans-serif;
       font-size:13px;box-shadow:0 8px 32px rgba(0,0,0,.55);
-      min-width:300px;max-height:92vh;overflow:hidden;
+      width:320px;height:480px; /* 固定初始大小 */
+      overflow:hidden;
       display:flex;flex-direction:column;user-select:none;
     }
     #ata-panel::-webkit-scrollbar{width:3px;}
     #ata-panel::-webkit-scrollbar-thumb{background:rgba(79,195,247,.4);border-radius:2px;}
+    /* 手动调整大小的拖拽区域 */
+    #ata-resize-handle{
+      position:absolute;bottom:0;right:0;width:16px;height:16px;
+      cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.3) 50%);
+      border-radius:0 0 14px 0;
+    }
 
     /* 顶部标题栏 */
     .ata-hdr{
@@ -1060,8 +1067,10 @@
       <div class="ata-log" id="ata-log"></div>
     </div>
 
-    </div>
-  `;
+    <!-- 手动调整大小的拖拽手柄 -->
+    <div id="ata-resize-handle"></div>
+  </div>
+`;
   document.body.appendChild(panel);
 
   /* =========================================================
@@ -2245,6 +2254,28 @@
     $('#ata-collapse-panel').textContent = '▼';
     $('#ata-collapse-panel').title = '收起面板';
   });
+
+  /* =========================================================
+     手动调整面板大小
+  ========================================================= */
+  let resizing = false, rStartX = 0, rStartY = 0, rStartW = 0, rStartH = 0;
+  const resizeHandle = $('#ata-resize-handle');
+  if (resizeHandle) {
+    resizeHandle.addEventListener('mousedown', e => {
+      resizing = true;
+      rStartX = e.clientX; rStartY = e.clientY;
+      rStartW = panel.offsetWidth; rStartH = panel.offsetHeight;
+      e.preventDefault(); e.stopPropagation();
+    });
+    document.addEventListener('mousemove', e => {
+      if (!resizing) return;
+      const newW = Math.max(280, rStartW + (e.clientX - rStartX));
+      const newH = Math.max(200, rStartH + (e.clientY - rStartY));
+      panel.style.width = newW + 'px';
+      panel.style.height = newH + 'px';
+    });
+    document.addEventListener('mouseup', () => { resizing = false; });
+  }
 
   /* =========================================================
      拖拽面板
