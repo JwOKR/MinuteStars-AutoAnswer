@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.15
+// @version      4.5.16
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1398,8 +1398,8 @@
             <input id="ata-lib-search" placeholder="🔍 搜索题目..." style="flex:1;min-width:150px" />
             <select id="ata-lib-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0">
               <option value="all">全部题目</option>
-              <option value="single">单选/判断</option>
-              <option value="multi">多选题</option>
+              <option value="builtin">内置题库</option>
+              <option value="user">自定义题库</option>
             </select>
           </div>
           <div style="overflow:auto;max-height:400px">
@@ -1830,12 +1830,6 @@
   let currentPage = 1;
   const PAGE_SIZE = 20;
 
-  // 判断答案类型
-  function isMultiChoice(answer) {
-    const a = String(answer);
-    return a.includes(',') || a === 'true' || a === 'false' ? false : a.length > 1;
-  }
-
   function renderBrowse(page) {
     currentPage = page;
     const keyword = ($('#ata-lib-search') ? $('#ata-lib-search').value : '').toLowerCase();
@@ -1843,9 +1837,9 @@
     const db      = getMergedDB();
     const entries = Object.entries(db)
       .filter(([q]) => q.toLowerCase().includes(keyword))
-      .filter(([, a]) => {
-        if (filter === 'single') return !isMultiChoice(a);
-        if (filter === 'multi')  return isMultiChoice(a);
+      .filter(([q]) => {
+        if (filter === 'builtin') return !!BUILTIN_DB[q];
+        if (filter === 'user')    return !BUILTIN_DB[q];
         return true;
       });
     const total   = entries.length;
