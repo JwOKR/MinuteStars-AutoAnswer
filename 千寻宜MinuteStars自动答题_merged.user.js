@@ -639,12 +639,6 @@
     }
     #ata-panel::-webkit-scrollbar{width:3px;}
     #ata-panel::-webkit-scrollbar-thumb{background:rgba(79,195,247,.4);border-radius:2px;}
-    /* 手动调整大小的拖拽区域 */
-    #ata-resize-handle{
-      position:absolute;bottom:0;left:0;width:16px;height:16px;
-      cursor:nesw-resize;background:linear-gradient(135deg,rgba(79,195,247,.3) 50%,transparent 50%);
-      border-radius:0 0 0 14px;
-    }
 
     /* 顶部标题栏 */
     .ata-hdr{
@@ -735,7 +729,6 @@
     /* 面板收起 - 隐藏主体内容和日志 */
     #ata-panel.collapsed #ata-body { display:none !important; }
     #ata-panel.collapsed .ata-log-wrap { display:none !important; }
-    #ata-panel.collapsed #ata-resize-handle { display:none !important; }
     #ata-panel.collapsed .ata-hdr { border-radius:12px; }
     #ata-panel.collapsed { height:auto !important; overflow:visible !important; }
     /* 收起时隐藏收起按钮自身 */
@@ -1069,8 +1062,6 @@
       <div class="ata-log" id="ata-log"></div>
     </div>
 
-    <!-- 手动调整大小的拖拽手柄 -->
-    <div id="ata-resize-handle"></div>
   </div>
 `;
   document.body.appendChild(panel);
@@ -2257,41 +2248,7 @@
     $('#ata-collapse-panel').title = '收起面板';
   });
 
-  /* =========================================================
-     手动调整面板大小（左下角手柄）
-  ========================================================= */
-  let resizing = false;
-  let rStartX = 0, rStartY = 0, rStartW = 0, rStartH = 0;
-  let rStartLeft = 0, rStartTop = 0;
-  const resizeHandle = $('#ata-resize-handle');
-  if (resizeHandle) {
-    resizeHandle.addEventListener('mousedown', e => {
-      resizing = true;
-      rStartX = e.clientX;
-      rStartY = e.clientY;
-      rStartW = panel.offsetWidth;
-      rStartH = panel.offsetHeight;
-      rStartLeft = panel.offsetLeft;
-      rStartTop = panel.offsetTop;
-      e.preventDefault();
-      e.stopPropagation();
-    });
-    document.addEventListener('mousemove', e => {
-      if (!resizing) return;
-      const deltaX = e.clientX - rStartX;
-      const deltaY = e.clientY - rStartY;
-      // 左下角手柄：向右拖 = 宽度+，左边不动
-      // 向左拖 = 宽度-，同时 left 往右移
-      const newW = Math.max(280, rStartW + deltaX);
-      const newH = Math.max(200, rStartH + deltaY);
-      const newLeft = deltaX < 0 ? rStartLeft + deltaX : rStartLeft;
-      panel.style.width = newW + 'px';
-      panel.style.height = newH + 'px';
-      panel.style.left = newLeft + 'px';
-      panel.style.right = 'auto';
-    });
-    document.addEventListener('mouseup', () => { resizing = false; });
-  }
+
 
   /* =========================================================
      拖拽面板
