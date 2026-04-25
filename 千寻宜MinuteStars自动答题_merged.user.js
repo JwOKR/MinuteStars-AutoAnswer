@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.3
+// @version      4.5.4
 // @author       JIA
-// @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 左下角调整大小
+// @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -739,13 +739,19 @@
 
     /* 拖拽和调整大小 */
     .ata-hdr{cursor:move;}
-    #ata-resize-handle{
-      position:absolute;bottom:0;left:0;width:20px;height:20px;
-      cursor:nwse-resize;z-index:10;
-      background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.4) 50%);
-      border-radius:0 0 0 12px;
+    .ata-resize-handle{
+      position:absolute;z-index:10;background:rgba(79,195,247,.35);
+      transition:background .15s;
     }
-    #ata-resize-handle:hover{background:linear-gradient(135deg,transparent 50%,rgba(79,195,247,.7) 50%);}
+    .ata-resize-handle:hover{background:rgba(79,195,247,.7);}
+    .ata-resize-n{top:-3px;left:20px;right:20px;height:6px;cursor:n-resize;}
+    .ata-resize-s{bottom:-3px;left:20px;right:20px;height:6px;cursor:s-resize;}
+    .ata-resize-w{left:-3px;top:20px;bottom:20px;width:6px;cursor:w-resize;}
+    .ata-resize-e{right:-3px;top:20px;bottom:20px;width:6px;cursor:e-resize;}
+    .ata-resize-nw{top:-3px;left:-3px;width:16px;height:16px;cursor:nw-resize;border-radius:4px 0 0 0;}
+    .ata-resize-ne{top:-3px;right:-3px;width:16px;height:16px;cursor:ne-resize;border-radius:0 4px 0 0;}
+    .ata-resize-sw{bottom:-3px;left:-3px;width:16px;height:16px;cursor:sw-resize;border-radius:0 0 0 4px;}
+    .ata-resize-se{bottom:-3px;right:-3px;width:16px;height:16px;cursor:se-resize;border-radius:0 0 4px 0;}
 
     /* 答题状态条 */
     .ata-status-bar{
@@ -1074,10 +1080,13 @@
 
   </div>
 `;
-  // 添加左下角调整大小手柄
-  const resizeHandle = document.createElement('div');
-  resizeHandle.id = 'ata-resize-handle';
-  panel.appendChild(resizeHandle);
+  // 添加8方向调整大小手柄
+  ['n','ne','e','se','s','sw','w','nw'].forEach(dir => {
+    const h = document.createElement('div');
+    h.className = `ata-resize-handle ata-resize-${dir}`;
+    h.dataset.dir = dir;
+    panel.appendChild(h);
+  });
 
   document.body.appendChild(panel);
 
@@ -2297,30 +2306,46 @@
   });
 
   /* =========================================================
-     左下角调整大小
+     8方向调整大小
   ========================================================= */
-  let isResizing = false, resizeStartX = 0, resizeStartY = 0, resizeStartW = 0, resizeStartH = 0;
-  const rsz = document.getElementById('ata-resize-handle');
+  let isResizing = false, resizeDir = '', resizeStartX = 0, resizeStartY = 0;
+  let resizeStartW = 0, resizeStartH = 0, resizeStartL = 0, resizeStartT = 0;
 
-  rsz.addEventListener('mousedown', (e) => {
-    isResizing = true;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    resizeStartW = panel.offsetWidth;
-    resizeStartH = panel.offsetHeight;
-    e.preventDefault();
-    e.stopPropagation();
+  document.querySelectorAll('.ata-resize-handle').forEach(rsz => {
+    rsz.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      resizeDir = rsz.dataset.dir;
+      resizeStartX = e.clientX;
+      resizeStartY = e.clientY;
+      resizeStartW = panel.offsetWidth;
+      resizeStartH = panel.offsetHeight;
+      resizeStartL = panel.offsetLeft;
+      resizeStartT = panel.offsetTop;
+      panel.style.right = 'auto';
+      e.preventDefault();
+      e.stopPropagation();
+    });
   });
 
   document.addEventListener('mousemove', (e) => {
     if (!isResizing) return;
-    const newW = Math.max(200, resizeStartW + (e.clientX - resizeStartX));
-    const newH = Math.max(150, resizeStartH + (e.clientY - resizeStartY));
+    const dx = e.clientX - resizeStartX;
+    const dy = e.clientY - resizeStartY;
+    let newW = resizeStartW, newH = resizeStartH, newL = resizeStartL, newT = resizeStartT;
+    const minW = 200, minH = 150;
+
+    if (resizeDir.includes('e')) newW = Math.max(minW, resizeStartW + dx);
+    if (resizeDir.includes('w')) { newW = Math.max(minW, resizeStartW - dx); newL = resizeStartL + (resizeStartW - newW); }
+    if (resizeDir.includes('s')) newH = Math.max(minH, resizeStartH + dy);
+    if (resizeDir.includes('n')) { newH = Math.max(minH, resizeStartH - dy); newT = resizeStartT + (resizeStartH - newH); }
+
     panel.style.width = newW + 'px';
     panel.style.height = newH + 'px';
+    panel.style.left = newL + 'px';
+    panel.style.top = newT + 'px';
   });
 
-  document.addEventListener('mouseup', () => { isResizing = false; });
+  document.addEventListener('mouseup', () => { isResizing = false; resizeDir = ''; });
 
   /* =========================================================
      初始化：检测题目数量
