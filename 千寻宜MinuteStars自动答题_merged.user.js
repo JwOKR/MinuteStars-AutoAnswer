@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.35
+// @version      4.5.36
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -798,12 +798,12 @@
     .ata-actions{padding:6px 14px 8px;}
     .ata-btn-row{display:grid;gap:8px;}
     .ata-btn-row:first-child{grid-template-columns:repeat(4,1fr);}
-    .ata-btn-row:last-child{grid-template-columns:repeat(3,1fr);}
+    .ata-btn-row:last-child{grid-template-columns:repeat(3,1fr);margin-top:12px;}
     .ata-btn{
       display:flex;align-items:center;justify-content:center;gap:6px;
       background:var(--nm-bg);color:var(--nm-text);
       border:none;border-radius:var(--nm-radius);
-      padding:10px 0;font-size:13px;cursor:pointer;
+      padding:10px 0;font-size:0.85em;cursor:pointer;
       font-weight:600;
       text-align:center;
       white-space:nowrap;
@@ -1283,7 +1283,7 @@
         <button class="ata-btn"        id="ata-reset">↺ 重置</button>
         <button class="ata-btn blue"   id="ata-submit">✔ 提交</button>
       </div>
-      <div class="ata-btn-row" style="margin-top:5px">
+      <div class="ata-btn-row">
         <button class="ata-btn"      id="ata-scan">🔍 扫描</button>
         <button class="ata-btn"      id="ata-collect">📥 采集</button>
         <button class="ata-btn purple" id="ata-open-lib">📚 题库</button>
