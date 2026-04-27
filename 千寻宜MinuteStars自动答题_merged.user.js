@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.33
+// @version      4.5.34
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -796,25 +796,22 @@
 
     /* 操作按钮区 */
     .ata-actions{padding:6px 14px 8px;}
-    .ata-btn-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;}
+    .ata-btn-row{display:grid;gap:8px;}
+    .ata-btn-row:first-child{grid-template-columns:repeat(4,1fr);}
+    .ata-btn-row:last-child{grid-template-columns:repeat(3,1fr);}
     .ata-btn{
-      display:inline-flex;align-items:center;justify-content:center;gap:6px;
+      display:flex;align-items:center;justify-content:center;gap:6px;
       background:var(--nm-bg);color:var(--nm-text);
       border:none;border-radius:var(--nm-radius);
       padding:10px 0;font-size:13px;cursor:pointer;
       font-weight:600;
       text-align:center;
       white-space:nowrap;
-      flex:1;min-width:56px;
       box-shadow: 
         5px 5px 10px var(--nm-shadow-dark),
         -5px -5px 10px var(--nm-shadow-light);
       transition:all .15s ease;
     }
-    /* 第一行4个按钮：每格25% */
-    .ata-actions > .ata-btn-row:nth-of-type(1) .ata-btn{flex:0 0 calc(25% - 6px);}
-    /* 第二行3个按钮：每格33.33% */
-    .ata-actions > .ata-btn-row:nth-of-type(2) .ata-btn{flex:0 0 calc(33.33% - 5.33px);}
     .ata-btn:hover{
       box-shadow: 
         4px 4px 8px var(--nm-shadow-dark),
