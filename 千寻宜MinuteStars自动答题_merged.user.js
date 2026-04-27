@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.27
+// @version      4.5.29
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -1283,7 +1283,6 @@
       <div class="ata-btn-row">
         <button class="ata-btn green"  id="ata-start">▶ 开始答题</button>
         <button class="ata-btn yellow" id="ata-pause" style="display:none">⏸ 暂停</button>
-        <button class="ata-btn red"    id="ata-stop">■ 停止</button>
         <button class="ata-btn"        id="ata-reset">↺ 重置</button>
         <button class="ata-btn blue"   id="ata-submit">✔ 提交</button>
       </div>
@@ -2596,22 +2595,22 @@
       // 暂停
       paused = true;
       if (inCountdown) {
-        btn.textContent = '▶ 继续倒计时';
-        btn.className = 'ata-btn orange';
+        btn.textContent = '▶ 继续';
+        btn.className = 'ata-btn green';
         setRunningStatus('⏸ 倒计时已暂停（剩余 ' + submitRem + 's）', 'running');
-        uLog('⏸ 倒计时已暂停（可再次点击继续）', 'warn');
+        uLog('⏸ 倒计时已暂停', 'warn');
       } else {
         btn.textContent = '▶ 继续';
         btn.className = 'ata-btn green';
         setRunningStatus('⏸ 已暂停', 'running');
-        uLog('⏸ 已暂停（可再次点击继续）', 'warn');
+        uLog('⏸ 已暂停', 'warn');
       }
     } else {
       // 继续
       paused = false;
       if (inCountdown) {
-        btn.textContent = '⏸ 暂停倒计时';
-        btn.className = 'ata-btn orange';
+        btn.textContent = '⏸ 暂停';
+        btn.className = 'ata-btn yellow';
         uLog('▶ 继续倒计时', 'ok');
       } else {
         btn.textContent = '⏸ 暂停';
@@ -2619,18 +2618,6 @@
         uLog('▶ 继续答题', 'ok');
       }
     }
-  });
-
-  $('#ata-stop').addEventListener('click', () => {
-    running = false;
-    paused  = false;
-    inCountdown = false;
-    clearInterval(submitTickId);
-    submitTickId = null;
-    const btn = $('#ata-pause');
-    if (btn) { btn.style.display = 'none'; btn.textContent = '⏸ 暂停'; btn.className = 'ata-btn yellow'; }
-    setRunningStatus('已停止', 'idle');
-    uLog('已手动停止', 'warn');
   });
   $('#ata-submit').addEventListener('click', doSubmit);
   $('#ata-scan').addEventListener('click', debugScan);
