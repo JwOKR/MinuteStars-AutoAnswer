@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.32
+// @version      4.5.33
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -2422,9 +2422,8 @@
         inCountdown = true;
         const pBtn = $('#ata-pause');
         if (pBtn) {
-          pBtn.style.display = '';
-          pBtn.textContent = '⏸ 暂停倒计时';
-          pBtn.className = 'ata-btn orange';
+          pBtn.textContent = '⏸ 暂停';
+          pBtn.className = 'ata-btn yellow';
         }
         const startTick = () => {
           clearInterval(submitTickId);
@@ -2594,24 +2593,22 @@
     if (!paused) {
       // 暂停
       paused = true;
+      btn.className = 'ata-btn green';
       if (inCountdown) {
-        btn.className = 'ata-btn orange';
         setRunningStatus('⏸ 倒计时已暂停（剩余 ' + submitRem + 's）', 'running');
         uLog('⏸ 倒计时已暂停', 'warn');
       } else {
-        btn.className = 'ata-btn green';
         setRunningStatus('⏸ 已暂停', 'running');
         uLog('⏸ 已暂停', 'warn');
       }
     } else {
       // 继续
       paused = false;
+      btn.className = 'ata-btn yellow';
       if (inCountdown) {
-        btn.className = 'ata-btn orange';
         setRunningStatus('⏳ 倒计时继续…', 'running');
         uLog('▶ 继续倒计时', 'ok');
       } else {
-        btn.className = 'ata-btn yellow';
         uLog('▶ 继续答题', 'ok');
       }
     }
