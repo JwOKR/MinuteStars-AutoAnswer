@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.29
+// @version      4.5.30
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -812,9 +812,9 @@
       transition:all .15s ease;
     }
     /* 第一行5个按钮 */
-    .ata-actions > .ata-btn-row:nth-of-type(1) .ata-btn{flex:1 1 calc(20% - 6.4px);}
+    .ata-actions > .ata-btn-row:nth-of-type(1) .ata-btn{flex:0 0 calc(20% - 6.4px);}
     /* 第二行3个按钮 */
-    .ata-actions > .ata-btn-row:nth-of-type(2) .ata-btn{flex:1 1 calc(33.33% - 5.33px);}
+    .ata-actions > .ata-btn-row:nth-of-type(2) .ata-btn{flex:0 0 calc(33.33% - 5.33px);}
     .ata-btn:hover{
       box-shadow: 
         4px 4px 8px var(--nm-shadow-dark),
@@ -1282,7 +1282,7 @@
     <div class="ata-actions">
       <div class="ata-btn-row">
         <button class="ata-btn green"  id="ata-start">▶ 开始答题</button>
-        <button class="ata-btn yellow" id="ata-pause" style="display:none">⏸ 暂停</button>
+        <button class="ata-btn yellow" id="ata-pause">⏸ 暂停</button>
         <button class="ata-btn"        id="ata-reset">↺ 重置</button>
         <button class="ata-btn blue"   id="ata-submit">✔ 提交</button>
       </div>
@@ -2177,7 +2177,7 @@
     paused  = false;
     inCountdown = false;
     const pBtn = $('#ata-pause');
-    if (pBtn) { pBtn.style.display = 'none'; pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
+    if (pBtn) { pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
     
     const sels = [
       // MinuteStars 专属提交按钮（优先）
@@ -2457,10 +2457,10 @@
       clearInterval(submitTickId);
       submitTickId = null;
       running = false;
-      paused  = false;
-      inCountdown = false;
-      const pBtn = $('#ata-pause');
-      if (pBtn) { pBtn.style.display = 'none'; pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
+          paused  = false;
+    inCountdown = false;
+    const pBtn = $('#ata-pause');
+    if (pBtn) { pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
     }
   }
 
@@ -2633,7 +2633,7 @@
     running = false; paused = false; inCountdown = false;
     clearInterval(submitTickId); submitTickId = null;
     const pBtn = $('#ata-pause');
-    if (pBtn) { pBtn.style.display = 'none'; pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
+    if (pBtn) { pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
     uLog('已重置', 'info');
   });
   $('#ata-close').addEventListener('click', () => { panel.style.display = 'none'; });
