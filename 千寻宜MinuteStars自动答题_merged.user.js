@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.24
+// @version      4.5.25
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -645,10 +645,12 @@
       --nm-warning: #fbbf24;
       --nm-radius: 12px;
       --nm-radius-lg: 20px;
+      --z-panel: 999999;
+      --z-modal: 10000000;
     }
 
     #ata-panel {
-      position:fixed;top:10px;right:10px;z-index:999999;
+      position:fixed;top:10px;right:10px;z-index:var(--z-panel);
       background:var(--nm-bg);color:var(--nm-text);
       border-radius:var(--nm-radius-lg);
       padding:0;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
@@ -732,7 +734,7 @@
     .ata-stat-card.green .num{color:var(--nm-success);}
     .ata-stat-card.red   .num{color:var(--nm-danger);}
     .ata-stat-card.blue  .num{color:var(--nm-accent);}
-    .ata-stat-card.gray  .num{color:var(--nm-text-secondary);}
+    .ata-stat-card.gray  .num{color:#6a7a8a;}
 
     /* 进度条 */
     .ata-prog-wrap{padding:10px 16px 6px;}
@@ -786,7 +788,7 @@
         inset -2px -2px 4px rgba(255,255,255,.5);
     }
     .ata-status-dot.idle{
-      background:var(--nm-shadow-dark);
+      background:#a0aab4;
     }
     @keyframes ata-pulse{0%,100%{opacity:1}50%{opacity:.5}}
     .ata-status-text{color:var(--nm-text-secondary);flex:1;}
@@ -817,11 +819,17 @@
         inset -4px -4px 8px var(--nm-shadow-light);
     }
     .ata-btn.green{color:var(--nm-success);}
+    .ata-btn.green:hover{background:rgba(72,187,120,.08);}
     .ata-btn.red{color:var(--nm-danger);}
+    .ata-btn.red:hover{background:rgba(248,113,113,.08);}
     .ata-btn.orange{color:var(--nm-warning);}
+    .ata-btn.orange:hover{background:rgba(251,191,36,.08);}
     .ata-btn.blue{color:var(--nm-accent);}
+    .ata-btn.blue:hover{background:rgba(90,141,238,.08);}
     .ata-btn.purple{color:#8b5cf6;font-size:12px;padding:9px 14px;}
+    .ata-btn.purple:hover{background:rgba(139,92,246,.08);}
     .ata-btn.yellow{color:var(--nm-warning);}
+    .ata-btn.yellow:hover{background:rgba(251,191,36,.08);}
 
     /* 面板主体滚动 */
     #ata-body {
@@ -840,13 +848,18 @@
       box-shadow: 8px 8px 16px var(--nm-shadow-dark), -8px -8px 16px var(--nm-shadow-light) !important;
     }
     #ata-panel.collapsed .ata-hdr {
-      border-radius: var(--nm-radius-lg) var(--nm-radius-lg) 0 0;
+      border-radius: var(--nm-radius-lg);
     }
     #ata-panel.collapsed #ata-body { display:none !important; }
     #ata-panel.collapsed .ata-log-wrap { display:none !important; }
     #ata-panel.collapsed #ata-collapse-panel { display:none !important; }
     #ata-expand-btn { display:none; }
     #ata-panel.collapsed #ata-expand-btn { display:inline-flex !important; }
+
+    /* 响应式：小屏适配 */
+    @media (max-width: 400px) {
+      #ata-panel { width:calc(100vw - 20px) !important; right:10px; left:10px; }
+    }
 
     /* 拖拽和调整大小 */
     .ata-resize-handle{
@@ -890,13 +903,15 @@
       margin:0 12px 10px;
       background:var(--nm-bg);
       border-radius:0 0 var(--nm-radius-lg) var(--nm-radius-lg);
-      padding:12px;
-      display:none;
+      padding:0 12px;
+      max-height:0;
+      overflow:hidden;
+      transition:max-height .3s ease, padding .3s ease;
       box-shadow: 
         inset 3px 3px 6px var(--nm-shadow-dark),
         inset -3px -3px 6px var(--nm-shadow-light);
     }
-    .ata-collapse-body.open{display:block;}
+    .ata-collapse-body.open{max-height:600px;padding:12px;}
     .ata-section-title{
       font-size:10px;color:var(--nm-text-secondary);
       letter-spacing:.5px;font-weight:600;text-transform:uppercase;
@@ -973,7 +988,7 @@
     .ata-log-wrap{padding:8px 14px 12px;margin-top:auto;}
     .ata-log-hdr{font-size:10px;color:var(--nm-text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
     .ata-log{
-      max-height:80px;overflow-y:auto;font-size:11px;color:var(--nm-text-secondary);
+      max-height:80px;overflow-y:auto;font-size:11px;color:#6a7a8a;
       background:var(--nm-bg);
       border-radius:var(--nm-radius);
       padding:8px 12px;
@@ -984,12 +999,17 @@
     }
 
     /* 题库标记 */
+    .ata-log::-webkit-scrollbar{width:3px;}
+    .ata-log::-webkit-scrollbar-thumb{background:var(--nm-shadow-dark);border-radius:4px;}
+    #ata-lib-scroll::-webkit-scrollbar{width:4px;}
+    #ata-lib-scroll::-webkit-scrollbar-thumb{background:var(--nm-shadow-dark);border-radius:4px;}
+
     .ata-answered{background:rgba(72,187,120,.1)!important;}
     .ata-no-match{background:rgba(248,113,113,.1)!important;}
 
     /* 题库管理弹窗 */
     #ata-lib-modal{
-      display:none;position:fixed;inset:0;z-index:10000000;
+      display:none;position:fixed;inset:0;z-index:var(--z-modal);
       background:rgba(0,0,0,.35);align-items:center;justify-content:center;
     }
     #ata-lib-modal.show{display:flex;}
@@ -1104,7 +1124,7 @@
       border-bottom:1px solid rgba(184,190,199,.3);
       color:var(--nm-text);vertical-align:top;
     }
-    .ata-lib-table tr:hover td{background:rgba(90,142,222,.05);}
+    .ata-lib-table tr:hover td{background:rgba(90,142,222,.12);}
     .ata-lib-table .q-cell{max-width:400px;word-break:break-all;}
     .ata-lib-table .ans-cell{color:var(--nm-accent);font-weight:700;}
     .ata-lib-table .del-btn{
@@ -1432,7 +1452,7 @@
               <option value="user">自定义题库</option>
             </select>
           </div>
-          <div style="overflow:auto;max-height:400px">
+          <div id="ata-lib-scroll" style="overflow:auto;max-height:400px">
             <table class="ata-lib-table">
               <thead><tr><th>题目</th><th>答案</th><th>操作</th></tr></thead>
               <tbody id="ata-lib-tbody"></tbody>
