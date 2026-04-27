@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.34
+// @version      4.5.35
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -2590,6 +2590,7 @@
     if (!paused) {
       // 暂停
       paused = true;
+      btn.textContent = '▶ 继续';
       btn.className = 'ata-btn green';
       if (inCountdown) {
         setRunningStatus('⏸ 倒计时已暂停（剩余 ' + submitRem + 's）', 'running');
@@ -2601,6 +2602,7 @@
     } else {
       // 继续
       paused = false;
+      btn.textContent = '⏸ 暂停';
       btn.className = 'ata-btn yellow';
       if (inCountdown) {
         setRunningStatus('⏳ 倒计时继续…', 'running');
