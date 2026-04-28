@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.51
+// @version      4.5.52
 // @author       JIA
-// @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名
+// @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
 // @match        https://erp.minutestars.com/*
 // @match        https://marketoperation.minutestars.com/*
@@ -1086,6 +1086,22 @@
       --z-modal: 10000000;
     }
 
+    /* 深色模式适配 */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --nm-bg: #1e2530;
+        --nm-shadow-light: #2a3441;
+        --nm-shadow-dark: #151a22;
+        --nm-text: #b8c4d4;
+        --nm-text-secondary: #7a8a9a;
+      }
+    }
+    /* 也支持手动检测页面背景色 */
+    @media (light-level: dim), (light-level: normal) {
+    }
+    @media (light-level: washed) {
+    }
+
     #ata-panel {
       position:fixed;top:10px;right:10px;z-index:var(--z-panel);
       background:var(--nm-bg);color:var(--nm-text);
@@ -1173,6 +1189,45 @@
     .ata-stat-card.blue  .num{color:var(--nm-accent);}
     .ata-stat-card.gray  .num{color:#6a7a8a;}
 
+    /* 命中率实时显示 */
+    .ata-hitrate-wrap{padding:0 14px 8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .ata-hitrate-bar{flex:1;min-width:80px;height:8px;background:var(--nm-bg);border-radius:8px;overflow:hidden;box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light)}
+    .ata-hitrate-fill{height:100%;width:0;border-radius:8px;background:linear-gradient(90deg,var(--nm-success),#34d399);transition:width .4s ease}
+    .ata-hitrate-text{font-size:12px;color:var(--nm-text);white-space:nowrap}
+    .ata-hitrate-text #ata-stat-hitrate{font-weight:700;color:var(--nm-success)}
+    .ata-hitrate-detail{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--nm-text-secondary)}
+    .ata-method-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+    .ata-method-dot.library{background:var(--nm-accent)}
+    .ata-method-dot.rule{background:var(--nm-warning)}
+    .ata-method-dot.ai{background:#8b5cf6}
+
+    /* 最近答题记录 */
+    .ata-recent-wrap{padding:0 14px 8px}
+    .ata-recent-hd{cursor:pointer;user-select:none}
+    .ata-recent-list{max-height:120px;overflow-y:auto;font-size:11px}
+    .ata-recent-list::-webkit-scrollbar{width:3px}
+    .ata-recent-list::-webkit-scrollbar-thumb{background:var(--nm-shadow-dark);border-radius:3px}
+    .ata-recent-item{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.04)}
+    .ata-recent-item:last-child{border-bottom:none}
+    .ata-recent-q{flex:1;min-width:0;color:var(--nm-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+    .ata-recent-q:hover{color:var(--nm-accent);text-decoration:underline}
+    .ata-recent-ans{font-weight:700;color:var(--nm-success);flex-shrink:0}
+    .ata-recent-method{font-size:9px;padding:1px 4px;border-radius:3px;flex-shrink:0}
+    .ata-recent-method.library{background:rgba(90,141,238,.15);color:var(--nm-accent)}
+    .ata-recent-method.rule{background:rgba(251,191,36,.15);color:var(--nm-warning)}
+    .ata-recent-method.ai{background:rgba(139,92,246,.15);color:#8b5cf6}
+    .ata-recent-method.none{background:rgba(248,113,113,.15);color:var(--nm-danger)}
+    .ata-recent-empty{color:var(--nm-text-secondary);text-align:center;padding:8px 0;font-size:11px}
+
+    /* 答题详情弹窗 */
+    .ata-detail-box{background:var(--nm-bg);border-radius:var(--nm-radius-lg);width:90%;max-width:400px;max-height:80vh;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+    .ata-detail-hd{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:linear-gradient(145deg,#d4d9e2,#ebeff5);border-bottom:1px solid rgba(0,0,0,.05);font-weight:600}
+    .ata-detail-close{background:var(--nm-bg);border:none;width:28px;height:28px;border-radius:var(--nm-radius);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:3px 3px 6px var(--nm-shadow-dark),-3px -3px 6px var(--nm-shadow-light)}
+    .ata-detail-body{padding:16px 20px;overflow-y:auto;max-height:60vh}
+    .ata-detail-row{display:flex;gap:12px;margin-bottom:12px}
+    .ata-detail-row label{color:var(--nm-text-secondary);font-size:12px;flex-shrink:0;width:70px}
+    .ata-detail-val{flex:1;font-size:13px;color:var(--nm-text);word-break:break-all}
+
     /* 进度条 */
     .ata-prog-wrap{padding:10px 16px 6px;}
     .ata-prog-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
@@ -1192,6 +1247,11 @@
       background: linear-gradient(90deg, var(--nm-accent), #4a7cdd);
       box-shadow: 2px 2px 4px var(--nm-shadow-dark);
     }
+
+    /* 答题速度曲线 */
+    .ata-speed-wrap{padding:6px 16px 8px}
+    .ata-speed-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:11px;color:var(--nm-text-secondary)}
+    .ata-speed-avg{font-weight:600;color:var(--nm-accent)}
 
     /* 状态条 */
     .ata-status-bar{
@@ -1299,7 +1359,14 @@
 
     /* 响应式：小屏适配 */
     @media (max-width: 400px) {
-      #ata-panel { width:calc(100vw - 20px) !important; right:10px; left:10px; }
+      #ata-panel { width:calc(100vw - 20px) !important; right:10px; left:10px; max-height:85vh; overflow-y:auto; }
+      .ata-stats { grid-template-columns: repeat(2, 1fr) !important; }
+      .ata-hdr { padding: 12px; gap: 8px; }
+      .ata-hdr-icon { width: 36px; height: 36px; font-size: 16px; }
+      .ata-hdr-title { font-size: 13px; }
+      .ata-btn-row:first-child { grid-template-columns: repeat(2, 1fr) !important; }
+      .ata-btn-row:last-child { grid-template-columns: repeat(3, 1fr) !important; }
+      #ata-log { max-height: 100px; font-size: 10px; }
     }
 
     /* 拖拽和调整大小 */
@@ -1340,11 +1407,22 @@
         inset -4px -4px 8px var(--nm-shadow-light);
       color:var(--nm-text);
     }
+    /* 设置项搜索 */
+    .ata-settings-search{display:flex;align-items:center;gap:8px;padding:10px 14px 6px}
+    .ata-settings-search input{flex:1;padding:8px 12px;border:none;border-radius:var(--nm-radius);background:var(--nm-bg);color:var(--nm-text);font-size:12px;box-shadow:inset 3px 3px 6px var(--nm-shadow-dark),inset -3px -3px 6px var(--nm-shadow-light);outline:none}
+    .ata-settings-search input:focus{box-shadow:inset 4px 4px 8px var(--nm-shadow-dark),inset -4px -4px 8px var(--nm-shadow-light)}
+    .ata-settings-search input::placeholder{color:var(--nm-text-secondary)}
+    .ata-settings-count{font-size:11px;color:var(--nm-text-secondary);white-space:nowrap}
+    .ata-row.hidden-by-search{display:none}
+    .ata-section-title.hidden-by-search{display:none}
     .ata-collapse-body{
       display:none;
       margin:0 12px 10px;
       background:var(--nm-bg);
       border-radius:0 0 var(--nm-radius-lg) var(--nm-radius-lg);
+    /* 策略预设 */
+    .ata-presets-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap}
+    .ata-presets-hint{min-height:14px}
       padding:0 12px;
       transition:padding .3s ease;
       box-shadow: 
@@ -1515,8 +1593,36 @@
     #ata-lib-body{flex:1;overflow-y:auto;padding:16px 20px;}
     #ata-lib-body::-webkit-scrollbar{width:4px;}
     #ata-lib-body::-webkit-scrollbar-thumb{background:var(--nm-shadow-dark);border-radius:4px;}
+
+    /* 标签管理 */
+    .ata-tags-section{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid rgba(0,0,0,.08)}
+    .ata-tags-section:last-child{border-bottom:none;margin-bottom:0}
+    .ata-tags-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:13px;font-weight:600;color:var(--nm-text)}
+    .ata-tags-list{display:flex;flex-wrap:wrap;gap:8px}
+    .ata-tags-empty{color:var(--nm-text-secondary);font-size:12px;text-align:center;padding:16px 0}
+    .ata-tag-item{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--nm-radius);background:var(--nm-bg);font-size:12px;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light);cursor:pointer}
+    .ata-tag-item:hover{box-shadow:1px 1px 2px var(--nm-shadow-dark),-1px -1px 2px var(--nm-shadow-light)}
+    .ata-tag-item .ata-tag-name{flex:1}
+    .ata-tag-item .ata-tag-count{font-size:10px;color:var(--nm-text-secondary)}
+    .ata-tag-item .ata-tag-del{background:none;border:none;cursor:pointer;color:var(--nm-danger);font-size:14px;padding:0 2px;opacity:.6}
+    .ata-tag-item .ata-tag-del:hover{opacity:1}
+    .ata-tag-color{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+    .ata-tag-input{padding:8px 12px;border-radius:var(--nm-radius);border:1px solid var(--nm-shadow-dark);background:var(--nm-bg);color:var(--nm-text);font-size:12px;width:120px}
+    .ata-tag-input:focus{outline:none;border-color:var(--nm-accent)}
+    .ata-tag-questions{background:rgba(0,0,0,.03);border-radius:var(--nm-radius);padding:12px}
+    .ata-tag-q-results{max-height:150px;overflow-y:auto;margin-top:8px}
+    .ata-tag-q-item{padding:6px 8px;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:4px}
+    .ata-tag-q-item:hover{background:rgba(90,141,238,.1)}
+    .ata-tag-q-item.selected{background:rgba(90,141,238,.2);color:var(--nm-accent)}
+    .ata-tag-checkboxes{display:flex;flex-wrap:wrap;gap:6px}
     .ata-pane{display:none;} .ata-pane.active{display:block;}
     .ata-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
+    /* 题库来源饼图 */
+    .ata-source-chart{background:var(--nm-bg);border-radius:var(--nm-radius);padding:12px;margin-bottom:14px;box-shadow:3px 3px 6px var(--nm-shadow-dark),-3px -3px 6px var(--nm-shadow-light)}
+    .ata-chart-title{font-size:12px;font-weight:600;color:var(--nm-text);margin-bottom:8px}
+    .ata-chart-legend{font-size:11px;color:var(--nm-text)}
+    .ata-legend-item{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+    .ata-legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
     .ata-stat-card{
       background:var(--nm-bg);border-radius:var(--nm-radius);
       padding:12px;text-align:center;
@@ -1700,6 +1806,27 @@
       </div>
     </div>
 
+    <!-- 命中率实时显示 -->
+    <div class="ata-hitrate-wrap" id="ata-hitrate-wrap">
+      <div class="ata-hitrate-bar"><div class="ata-hitrate-fill" id="ata-hitrate-fill"></div></div>
+      <div class="ata-hitrate-text"><span id="ata-stat-hitrate">0%</span> 命中率</div>
+      <div class="ata-hitrate-detail" id="ata-hitrate-detail">
+        <span class="ata-method-dot library" title="题库命中"></span><span id="ata-stat-lib">0</span>
+        <span class="ata-method-dot rule" title="规则推断"></span><span id="ata-stat-rule">0</span>
+        <span class="ata-method-dot ai" title="AI匹配"></span><span id="ata-stat-ai">0</span>
+      </div>
+    </div>
+
+    <!-- 最近答题记录（折叠） -->
+    <div class="ata-recent-wrap" id="ata-recent-wrap">
+      <div class="ata-collapse-hd ata-recent-hd" id="ata-recent-hd">
+        <span>📋 最近答题</span><span id="ata-recent-arrow">▼</span>
+      </div>
+      <div class="ata-collapse-body" id="ata-recent-body">
+        <div class="ata-recent-list" id="ata-recent-list"><div class="ata-recent-empty">暂无答题记录</div></div>
+      </div>
+    </div>
+
     <!-- 进度条 -->
     <div class="ata-prog-wrap">
       <div class="ata-prog-meta">
@@ -1707,6 +1834,15 @@
         <span class="ata-prog-pct" id="ata-prog-pct">0%</span>
       </div>
       <div class="ata-prog"><div class="ata-prog-bar" id="ata-bar"></div></div>
+    </div>
+
+    <!-- 答题速度曲线 -->
+    <div class="ata-speed-wrap" id="ata-speed-wrap" style="display:none">
+      <div class="ata-speed-hd">
+        <span>📈 答题速度</span>
+        <span class="ata-speed-avg" id="ata-speed-avg">平均 0ms</span>
+      </div>
+      <canvas id="ata-speed-canvas" width="300" height="40" style="width:100%;height:40px;display:block"></canvas>
     </div>
 
     <!-- 状态指示条 -->
@@ -1735,6 +1871,12 @@
       <span>⚙ 设置</span><span id="ata-settings-arrow">▼</span>
     </div>
     <div class="ata-collapse-body" id="ata-settings-body">
+
+      <!-- 设置项搜索 -->
+      <div class="ata-settings-search">
+        <input type="text" id="ata-settings-search" placeholder="🔍 搜索设置项...">
+        <span id="ata-settings-count" class="ata-settings-count"></span>
+      </div>
 
       <div class="ata-section-title">匹配策略</div>
       <div class="ata-row">
@@ -1844,6 +1986,20 @@
         <span class="ata-label">控制台日志</span>
         <label class="ata-toggle"><input type="checkbox" id="cfg-debug"><span class="ata-slider"></span></label>
       </div>
+
+      <div class="ata-section-title">📋 策略预设</div>
+      <div class="ata-presets-row">
+        <select id="ata-preset-select" class="ata-text-input" style="flex:1;padding:6px 10px;font-size:12px">
+          <option value="">— 选择预设 —</option>
+          <option value="fast">⚡ 快速答题（低延迟）</option>
+          <option value="accurate">🎯 精准答题（高阈值）</option>
+          <option value="safe">🛡️ 安全答题（长延迟）</option>
+        </select>
+        <button class="ata-btn blue" id="ata-preset-apply" style="padding:6px 12px;font-size:11px">应用</button>
+        <button class="ata-btn" id="ata-preset-save" style="padding:6px 12px;font-size:11px">💾 保存当前</button>
+      </div>
+      <div class="ata-presets-hint" id="ata-presets-hint" style="font-size:10px;color:var(--nm-text-secondary);margin-top:4px"></div>
+
       <div style="margin-top:6px;display:flex;gap:6px">
         <button class="ata-btn green" id="cfg-save">💾 保存</button>
         <button class="ata-btn"       id="cfg-reset-defaults">↺ 恢复默认</button>
@@ -1886,6 +2042,7 @@
         <div class="ata-tab" data-tab="bulk">📥 批量导入</div>
         <div class="ata-tab" data-tab="single">➕ 单条添加</div>
         <div class="ata-tab" data-tab="browse">🔍 浏览题库</div>
+        <div class="ata-tab" data-tab="tags">🏷️ 标签</div>
         <div class="ata-tab" data-tab="export">📤 导出</div>
       </div>
       <div id="ata-lib-body">
@@ -1896,6 +2053,17 @@
             <div class="ata-stat-card"><div class="num" id="stat-single">0</div><div class="lab">单选/判断</div></div>
             <div class="ata-stat-card"><div class="num" id="stat-multi">0</div><div class="lab">多选题</div></div>
             <div class="ata-stat-card"><div class="num" id="stat-user">0</div><div class="lab">自定义添加</div></div>
+          </div>
+          <!-- 题库来源分布饼图 -->
+          <div class="ata-source-chart" id="ata-source-chart">
+            <div class="ata-chart-title">题库来源分布</div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <canvas id="ata-pie-canvas" width="100" height="100" style="flex-shrink:0"></canvas>
+              <div class="ata-chart-legend" id="ata-chart-legend">
+                <div class="ata-legend-item"><span class="ata-legend-dot" style="background:#5a8dee"></span>内置题库 <span id="stat-builtin-pct">0%</span></div>
+                <div class="ata-legend-item"><span class="ata-legend-dot" style="background:#48bb78"></span>自定义题库 <span id="stat-user-pct">0%</span></div>
+              </div>
+            </div>
           </div>
           <div style="font-size:12px;color:#aaa;margin-bottom:10px">
             内置 ${Object.keys(BUILTIN_DB).length} 条（固定）+ 自定义 <span id="stat-uc">0</span> 条（可增删）
@@ -1953,6 +2121,9 @@
               <option value="builtin">内置题库</option>
               <option value="user">自定义题库</option>
             </select>
+            <select id="ata-lib-tag-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
+              <option value="">全部标签</option>
+            </select>
             <select id="ata-lib-ans-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
               <option value="">全部答案</option>
               <option value="A">仅 A</option>
@@ -1977,6 +2148,43 @@
               <input id="ata-pager-jump" type="number" min="1" placeholder="页码" style="width:50px;padding:4px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;text-align:center" />
               <button class="ata-btn" id="ata-pager-jump-btn">跳转</button>
               <button class="ata-btn" id="ata-pager-next">▶</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 标签管理面板 -->
+        <div class="ata-pane" id="pane-tags">
+          <div class="ata-tags-section">
+            <div class="ata-tags-header">
+              <span>🏷️ 标签列表</span>
+              <button class="ata-btn green" id="ata-tag-add" style="padding:4px 12px;font-size:11px">+ 新建</button>
+            </div>
+            <div class="ata-tags-list" id="ata-tags-list">
+              <div class="ata-tags-empty">暂无标签，点击「新建」创建</div>
+            </div>
+          </div>
+          <div class="ata-tags-section">
+            <div class="ata-tags-header">
+              <span>📋 给题目打标签</span>
+            </div>
+            <div class="ata-tag-questions">
+              <div class="ata-tag-q-input">
+                <input type="text" id="ata-tag-q-search" placeholder="输入题目标题搜索..." style="width:100%;padding:8px;border-radius:8px;border:1px solid #ccc;box-sizing:border-box">
+              </div>
+              <div class="ata-tag-q-results" id="ata-tag-q-results">
+                <div class="ata-tags-empty">输入上方搜索框查找题目</div>
+              </div>
+              <div class="ata-tag-selected" id="ata-tag-selected" style="display:none">
+                <div style="font-size:11px;color:#888;margin-bottom:4px">已选：</div>
+                <div class="ata-tag-selected-q" id="ata-tag-selected-q" style="font-size:12px;word-break:break-all"></div>
+              </div>
+              <div class="ata-tag-assign" id="ata-tag-assign" style="margin-top:8px;display:none">
+                <div style="font-size:11px;color:#888;margin-bottom:4px">分配标签：</div>
+                <div class="ata-tag-checkboxes" id="ata-tag-checkboxes"></div>
+                <div style="margin-top:8px">
+                  <button class="ata-btn green" id="ata-tag-do-assign" style="padding:4px 12px;font-size:11px">✓ 确认分配</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2030,6 +2238,51 @@
     [['stat-total', total],['stat-single', single],['stat-multi', multi],['stat-user', uc],['stat-uc', uc]].forEach(([id, val]) => {
       const el = $(('#'+id)); if (el) el.textContent = val;
     });
+    // 绘制饼图
+    const builtinCount = Object.keys(BUILTIN_DB).length;
+    const userCount = uc;
+    const bPct = total > 0 ? Math.round(builtinCount / total * 100) : 0;
+    const uPct = total > 0 ? Math.round(userCount / total * 100) : 0;
+    const bEl = $('#stat-builtin-pct'); if (bEl) bEl.textContent = bPct + '%';
+    const uEl = $('#stat-user-pct'); if (uEl) uEl.textContent = uPct + '%';
+    drawPieChart('ata-pie-canvas', [builtinCount, userCount], ['#5a8dee', '#48bb78']);
+  }
+
+  // 绘制饼图
+  function drawPieChart(canvasId, data, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const total = data.reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ccc';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('无数据', canvas.width / 2, canvas.height / 2);
+      return;
+    }
+    const cx = canvas.width / 2, cy = canvas.height / 2, r = Math.min(cx, cy) - 4;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let startAngle = -Math.PI / 2;
+    data.forEach((val, i) => {
+      if (val === 0) return;
+      const slice = (val / total) * 2 * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, startAngle, startAngle + slice);
+      ctx.closePath();
+      ctx.fillStyle = colors[i] || '#888';
+      ctx.fill();
+      startAngle += slice;
+    });
+    // 中心文字
+    ctx.fillStyle = 'var(--nm-text, #5a6a7a)';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(total, cx, cy);
+  }
     const el = $('#ata-lib-total'); if (el) el.textContent = total;
   }
 
@@ -2042,7 +2295,134 @@
       $('#pane-' + tab.dataset.tab).classList.add('active');
       if (tab.dataset.tab === 'stats')  refreshStats();
       if (tab.dataset.tab === 'browse') renderBrowse(1);
+      if (tab.dataset.tab === 'tags')   initTagPanel();
     });
+  });
+
+  /* =========================================================
+     题库标签管理
+  ========================================================= */
+  const TAG_DB_KEY = 'ata_tag_db';
+  const TAG_MAP_KEY = 'ata_tag_map'; // 题目到标签的映射
+  const TAG_COLORS = ['#5a8dee','#48bb78','#f87171','#fbbf24','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+  let _tagDb = [], _tagMap = {}; // _tagMap = { '题目': ['标签1', '标签2'] }
+  let _selectedTagQ = null; // 当前选中的题目
+
+  function loadTags() {
+    try { _tagDb = JSON.parse(GM_getValue(TAG_DB_KEY, '[]')); } catch { _tagDb = []; }
+    try { _tagMap = JSON.parse(GM_getValue(TAG_MAP_KEY, '{}')); } catch { _tagMap = {}; }
+  }
+  function saveTags() {
+    try { GM_setValue(TAG_DB_KEY, JSON.stringify(_tagDb)); GM_setValue(TAG_MAP_KEY, JSON.stringify(_tagMap)); } catch {}
+  }
+
+  function initTagPanel() {
+    loadTags();
+    renderTagsList();
+    updateTagFilterOptions();
+  }
+
+  function renderTagsList() {
+    const list = document.getElementById('ata-tags-list');
+    if (!list) return;
+    if (!_tagDb.length) {
+      list.innerHTML = '<div class="ata-tags-empty">暂无标签，点击「新建」创建</div>';
+      return;
+    }
+    const db = getMergedDB();
+    list.innerHTML = _tagDb.map((t, i) => {
+      const count = Object.keys(_tagMap).filter(q => _tagMap[q]?.includes(t.name)).length;
+      return `<div class="ata-tag-item" data-idx="${i}">
+        <span class="ata-tag-color" style="background:${t.color}"></span>
+        <span class="ata-tag-name">${escHtml(t.name)}</span>
+        <span class="ata-tag-count">(${count})</span>
+        <button class="ata-tag-del" data-idx="${i}" title="删除">✕</button>
+      </div>`;
+    }).join('');
+    // 更新标签复选框
+    renderTagCheckboxes();
+  }
+
+  function renderTagCheckboxes() {
+    const container = document.getElementById('ata-tag-checkboxes');
+    if (!container) return;
+    container.innerHTML = _tagDb.map(t =>
+      `<label style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:var(--nm-bg);border-radius:6px;font-size:11px;cursor:pointer">
+        <input type="checkbox" value="${escHtml(t.name)}" style="accent-color:var(--nm-accent)">
+        <span style="width:8px;height:8px;border-radius:2px;background:${t.color};display:inline-block"></span>
+        ${escHtml(t.name)}
+      </label>`
+    ).join('');
+  }
+
+  // 新建标签
+  document.getElementById('ata-tag-add')?.addEventListener('click', () => {
+    const name = prompt('输入标签名称：');
+    if (!name?.trim()) return;
+    if (_tagDb.some(t => t.name === name.trim())) { alert('标签已存在'); return; }
+    _tagDb.push({ name: name.trim(), color: TAG_COLORS[_tagDb.length % TAG_COLORS.length] });
+    saveTags();
+    renderTagsList();
+  });
+
+  // 删除标签
+  document.getElementById('ata-tags-list')?.addEventListener('click', e => {
+    const del = e.target.closest('.ata-tag-del');
+    if (!del) return;
+    const idx = parseInt(del.dataset.idx);
+    const tagName = _tagDb[idx].name;
+    if (!confirm(`确定删除标签「${tagName}」？`)) return;
+    _tagDb.splice(idx, 1);
+    // 从映射中移除
+    for (const q in _tagMap) {
+      _tagMap[q] = _tagMap[q].filter(t => t !== tagName);
+      if (!_tagMap[q].length) delete _tagMap[q];
+    }
+    saveTags();
+    renderTagsList();
+  });
+
+  // 搜索题目
+  let _tagSearchT = null;
+  document.getElementById('ata-tag-q-search')?.addEventListener('input', function() {
+    clearTimeout(_tagSearchT);
+    _tagSearchT = setTimeout(() => {
+      const kw = this.value.trim().toLowerCase();
+      const results = document.getElementById('ata-tag-q-results');
+      if (!kw) { results.innerHTML = '<div class="ata-tags-empty">输入上方搜索框查找题目</div>'; return; }
+      const db = getMergedDB();
+      const matches = Object.entries(db).filter(([q]) => q.toLowerCase().includes(kw)).slice(0, 20);
+      if (!matches.length) { results.innerHTML = '<div class="ata-tags-empty">未找到匹配的题目</div>'; return; }
+      results.innerHTML = matches.map(([q]) => `<div class="ata-tag-q-item" data-q="${escHtml(q)}">${escHtml(q.substring(0, 80))}${q.length > 80 ? '…' : ''}</div>`).join('');
+    }, 200);
+  });
+
+  // 选择题目
+  document.getElementById('ata-tag-q-results')?.addEventListener('click', e => {
+    const item = e.target.closest('.ata-tag-q-item');
+    if (!item) return;
+    $$('.ata-tag-q-item').forEach(el => el.classList.remove('selected'));
+    item.classList.add('selected');
+    _selectedTagQ = item.dataset.q;
+    document.getElementById('ata-tag-selected').style.display = '';
+    document.getElementById('ata-tag-selected-q').textContent = _selectedTagQ;
+    document.getElementById('ata-tag-assign').style.display = '';
+    // 勾选当前已有的标签
+    const existingTags = _tagMap[_selectedTagQ] || [];
+    document.querySelectorAll('#ata-tag-checkboxes input').forEach(cb => {
+      cb.checked = existingTags.includes(cb.value);
+    });
+  });
+
+  // 确认分配标签
+  document.getElementById('ata-tag-do-assign')?.addEventListener('click', () => {
+    if (!_selectedTagQ) return;
+    const checked = [...document.querySelectorAll('#ata-tag-checkboxes input:checked')].map(cb => cb.value);
+    if (checked.length) _tagMap[_selectedTagQ] = checked;
+    else delete _tagMap[_selectedTagQ];
+    saveTags();
+    alert('标签分配成功！');
+    renderTagsList();
   });
 
   $('#ata-open-lib').addEventListener('click', () => {
@@ -2474,10 +2854,12 @@
     currentPage = page;
     const searchEl  = $c('#ata-lib-search');
     const filterEl  = $c('#ata-lib-filter');
+    const tagFilterEl = $c('#ata-lib-tag-filter');
     const ansFilterEl = $c('#ata-lib-ans-filter');
     const regexEl  = $c('#ata-lib-regex');
     const keyword  = searchEl ? searchEl.value : '';
     const filter   = filterEl ? filterEl.value : 'all';
+    const tagFilter = tagFilterEl ? tagFilterEl.value : '';
     const ansFilter = ansFilterEl ? ansFilterEl.value : '';
     const useRegex = regexEl && regexEl.checked;
     const db       = getMergedDB();
@@ -2501,6 +2883,13 @@
       if (filter === 'user')    return !BUILTIN_DB[q];
       return true;
     });
+    // ── 标签过滤 ──
+    if (tagFilter) {
+      entries = entries.filter(([q]) => {
+        const tags = _tagMap[q] || [];
+        return tags.includes(tagFilter);
+      });
+    }
     // ── 答案过滤 ──
     if (ansFilter) {
       entries = entries.filter(([, a]) => {
@@ -2552,6 +2941,18 @@
   // v4.5.39 新增浏览控件
   $c('#ata-lib-regex')?.addEventListener('change', () => renderBrowse(1));
   $c('#ata-lib-ans-filter')?.addEventListener('change', () => renderBrowse(1));
+  $c('#ata-lib-tag-filter')?.addEventListener('change', () => renderBrowse(1));
+
+  // 更新标签筛选下拉框
+  function updateTagFilterOptions() {
+    const select = $c('#ata-lib-tag-filter');
+    if (!select) return;
+    const current = select.value;
+    const options = _tagDb.map(t => `<option value="${escHtml(t.name)}">${escHtml(t.name)}</option>`).join('');
+    select.innerHTML = '<option value="">全部标签</option>' + options;
+    select.value = current;
+  }
+  updateTagFilterOptions();
   $c('#ata-lib-random')?.addEventListener('click', function() {
     this.dataset.random = this.dataset.random === '1' ? '0' : '1';
     this.textContent = this.dataset.random === '1' ? '✅ 随机' : '🎲 随机';
@@ -2973,7 +3374,13 @@
 
       setProgress(0, containers.length);
       let ok = 0, skip = 0, infer = 0;
+      let libCnt = 0, ruleCnt = 0, aiCnt = 0; // 各匹配方式计数
       const seenQ = new Set();
+      // 速度记录
+      let _speedTimes = [];
+      let _speedStart = Date.now();
+      const speedWrap = document.getElementById('ata-speed-wrap');
+      if (speedWrap) speedWrap.style.display = '';
 
       for (let i = 0; i < containers.length; i++) {
         if (!running) break;
@@ -2987,6 +3394,7 @@
         let matchedAnswer = null, matchMethod = 'none';
         if (ans !== null) {
           matchedAnswer = ans; matchMethod = 'library';
+          libCnt++;
           await fill(c, ans);
           c.classList.add('ata-answered');
           const ansStr = Array.isArray(ans) ? ans.join('') : String(ans);
@@ -2998,6 +3406,7 @@
           const ruleAns = ruleInfer(txt, inputs);
           if (ruleAns) {
             matchedAnswer = ruleAns; matchMethod = 'rule';
+            ruleCnt++;
             await fill(c, ruleAns);
             c.classList.add('ata-answered');
             uLog('🔎 规则推断 ' + txt.substring(0, 30) + '… → ' + ruleAns, 'info');
@@ -3007,6 +3416,7 @@
             const aiAns = await aiMatch(txt, inputs);
             if (aiAns) {
               matchedAnswer = aiAns; matchMethod = 'ai';
+              aiCnt++;
               await fill(c, aiAns);
               c.classList.add('ata-answered');
               uLog('🤖 AI匹配 ' + txt.substring(0, 30) + '… → ' + aiAns, 'info');
@@ -3024,7 +3434,8 @@
         }
         // 记录答题日志
         _logAnswer(txt, matchedAnswer, matchMethod);
-
+        // 添加最近答题记录 & 更新命中率
+        addRecentLog(txt, matchedAnswer, matchMethod);
         // 实时更新统计卡片（每题都更新，用 $c 缓存避免重复查询）
         const pct = Math.round((i + 1) / containers.length * 100);
         setProgress(i + 1, containers.length);
@@ -3034,6 +3445,12 @@
         if (statAns)  statAns.textContent  = i + 1;
         if (statHit)  statHit.textContent   = ok + infer;
         if (statMiss) statMiss.textContent  = skip;
+        // 更新命中率 & 各方式统计
+        updateHitRate(i + 1, ok + infer, libCnt, ruleCnt, aiCnt);
+        // 记录答题速度
+        const elapsed = Date.now() - _speedStart;
+        _speedTimes.push(elapsed);
+        drawSpeedChart();
         setRunningStatus('答题中 ' + (i+1) + '/' + containers.length + ' 题 ' + pct + '%', 'running');
 
         // 暂停时阻塞，直到用户点继续
@@ -3188,6 +3605,143 @@
     if (open) syncSettingsUI();
   });
 
+  // 设置项搜索
+  let _settingsSearchT = null;
+  document.getElementById('ata-settings-search')?.addEventListener('input', function() {
+    clearTimeout(_settingsSearchT);
+    _settingsSearchT = setTimeout(() => {
+      const kw = this.value.trim().toLowerCase();
+      const rows = settingsBody.querySelectorAll('.ata-row');
+      const sections = settingsBody.querySelectorAll('.ata-section-title');
+      let visibleCount = 0;
+      rows.forEach(row => {
+        const label = row.querySelector('.ata-label')?.textContent.toLowerCase() || '';
+        const match = !kw || label.includes(kw);
+        row.classList.toggle('hidden-by-search', !match);
+        if (match && !row.closest('#ata-settings-body').classList.contains('hidden-by-search')) visibleCount++;
+      });
+      sections.forEach(sec => {
+        const nextEls = [];
+        let el = sec.nextElementSibling;
+        while (el && !el.classList.contains('ata-section-title')) { nextEls.push(el); el = el.nextElementSibling; }
+        const hasVisible = nextEls.some(e => !e.classList.contains('hidden-by-search'));
+        sec.classList.toggle('hidden-by-search', kw && !hasVisible);
+      });
+      document.getElementById('ata-settings-count').textContent = kw ? `${visibleCount} 个结果` : '';
+    }, 150);
+  });
+
+  // 最近答题记录折叠
+  const recentHd = document.getElementById('ata-recent-hd');
+  const recentBody = document.getElementById('ata-recent-body');
+  const recentArrow = document.getElementById('ata-recent-arrow');
+  recentHd?.addEventListener('click', () => {
+    const open = recentBody.classList.toggle('open');
+    recentArrow.textContent = open ? '▲' : '▼';
+  });
+
+  /* =========================================================
+     实时命中率 & 答题记录
+  ========================================================= */
+  let _recentLogs = []; // 最近答题记录（最多10条）
+  const MAX_RECENT = 10;
+
+  /** 更新命中率显示 */
+  function updateHitRate(answered, hit, lib, rule, ai) {
+    const pct = answered > 0 ? Math.round(hit / answered * 100) : 0;
+    const fill = document.getElementById('ata-hitrate-fill');
+    const pctEl = document.getElementById('ata-stat-hitrate');
+    if (fill)  fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+    document.getElementById('ata-stat-lib')?.textContent && (document.getElementById('ata-stat-lib').textContent = lib);
+    document.getElementById('ata-stat-rule')?.textContent && (document.getElementById('ata-stat-rule').textContent = rule);
+    document.getElementById('ata-stat-ai')?.textContent && (document.getElementById('ata-stat-ai').textContent = ai);
+  }
+
+  /** 添加最近答题记录 */
+  function addRecentLog(question, answer, method) {
+    const q = question.length > 40 ? question.substring(0, 40) + '…' : question;
+    const a = Array.isArray(answer) ? answer.join('') : String(answer || '—');
+    _recentLogs.unshift({ q, a, method });
+    if (_recentLogs.length > MAX_RECENT) _recentLogs.pop();
+    renderRecentLogs();
+  }
+
+  /** 渲染最近答题记录 */
+  function renderRecentLogs() {
+    const list = document.getElementById('ata-recent-list');
+    if (!list) return;
+    if (!_recentLogs.length) {
+      list.innerHTML = '<div class="ata-recent-empty">暂无答题记录</div>';
+      return;
+    }
+    list.innerHTML = _recentLogs.map((log, i) => `
+      <div class="ata-recent-item" data-idx="${i}">
+        <span class="ata-recent-method ${log.method}">${log.method === 'library' ? '题库' : log.method === 'rule' ? '规则' : log.method === 'ai' ? 'AI' : '—'}</span>
+        <span class="ata-recent-q" title="${escHtml(log.q)}">${escHtml(log.q)}</span>
+        <span class="ata-recent-ans">${log.a}</span>
+      </div>
+    `).join('');
+  }
+
+  /** 显示答题详情弹窗 */
+  function showAnswerDetail(log) {
+    const modal = document.createElement('div');
+    modal.id = 'ata-detail-modal';
+    modal.innerHTML = `
+      <div class="ata-detail-box">
+        <div class="ata-detail-hd">📋 答题详情 <button class="ata-detail-close">✕</button></div>
+        <div class="ata-detail-body">
+          <div class="ata-detail-row"><label>题目</label><div class="ata-detail-val">${escHtml(log.q)}</div></div>
+          <div class="ata-detail-row"><label>答案</label><div class="ata-detail-val" style="color:var(--nm-success);font-weight:700">${escHtml(log.a)}</div></div>
+          <div class="ata-detail-row"><label>匹配方式</label><div class="ata-detail-val"><span class="ata-recent-method ${log.method}">${log.method === 'library' ? '题库命中' : log.method === 'rule' ? '规则推断' : log.method === 'ai' ? 'AI匹配' : '未匹配'}</span></div></div>
+        </div>
+      </div>
+    `;
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999999;display:flex;align-items:center;justify-content:center';
+    document.body.appendChild(modal);
+    modal.querySelector('.ata-detail-close').onclick = () => modal.remove();
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+  }
+
+  // 点击最近答题记录查看详情
+  document.getElementById('ata-recent-list')?.addEventListener('click', e => {
+    const item = e.target.closest('.ata-recent-item');
+    if (item) {
+      const idx = parseInt(item.dataset.idx);
+      if (_recentLogs[idx]) showAnswerDetail(_recentLogs[idx]);
+    }
+  });
+
+  /* =========================================================
+     答题速度曲线
+  ========================================================= */
+  function drawSpeedChart() {
+    const canvas = document.getElementById('ata-speed-canvas');
+    if (!canvas || !_speedTimes.length) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    // 绘制折线
+    const step = w / Math.max(_speedTimes.length - 1, 1);
+    const maxTime = Math.max(..._speedTimes, 1);
+    ctx.beginPath();
+    ctx.strokeStyle = '#5a8dee';
+    ctx.lineWidth = 1.5;
+    _speedTimes.forEach((t, i) => {
+      const x = i * step;
+      const y = h - (t / maxTime) * (h - 4) - 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    // 更新平均速度
+    const avg = _speedTimes.length > 1
+      ? Math.round((_speedTimes[_speedTimes.length - 1] - _speedTimes[0]) / (_speedTimes.length - 1))
+      : 0;
+    const avgEl = document.getElementById('ata-speed-avg');
+    if (avgEl) avgEl.textContent = `平均 ${avg}ms/题`;
+  }
+
   // 模糊匹配开关
   document.getElementById('cfg-fuzzy-enable').addEventListener('change', function () {
     const hintEl  = document.getElementById('cfg-fuzzy-hint');
@@ -3266,6 +3820,103 @@
     syncSettingsUI();
     const msg = document.getElementById('cfg-save-msg');
     if (msg) { msg.textContent = '↺ 已恢复默认'; setTimeout(() => { msg.textContent = ''; }, 2500); }
+  });
+
+  /* =========================================================
+     键盘导航支持
+  ========================================================= */
+  // 设置区 Tab 导航
+  const settingsBody = document.getElementById('ata-settings-body');
+  settingsBody?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.closest('.ata-text-input')) {
+      // 非文本输入框的 Enter 触发表单提交
+      document.getElementById('cfg-save')?.click();
+    }
+  });
+
+  // 题库弹窗 Enter 确认
+  const libModal = document.getElementById('ata-lib-modal');
+  libModal?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      libModal.classList.remove('show');
+    }
+  });
+
+  /* =========================================================
+     策略预设
+  ========================================================= */
+  const PRESETS_KEY = 'ata_presets';
+  const PRESET_DEFS = {
+    fast:     { name: '⚡ 快速答题', fuzzyEnable: true, fuzzyThresh: 0.65, answerDelay: 50,  autoLogin: false, aiEnable: false, hint: '低延迟，题库优先，适合简单考试' },
+    accurate: { name: '🎯 精准答题', fuzzyEnable: true, fuzzyThresh: 0.85, answerDelay: 150, autoLogin: false, aiEnable: false, hint: '高阈值，降低误匹配' },
+    safe:     { name: '🛡️ 安全答题', fuzzyEnable: true, fuzzyThresh: 0.75, answerDelay: 300, autoLogin: true,  aiEnable: true,  hint: '长延迟+AI兜底，适合严格考试' },
+  };
+  let _userPresets = {};
+
+  function loadPresets() {
+    try { _userPresets = JSON.parse(GM_getValue(PRESETS_KEY, '{}')); } catch { _userPresets = {}; }
+  }
+  function savePresets() {
+    try { GM_setValue(PRESETS_KEY, JSON.stringify(_userPresets)); } catch {}
+  }
+  function applyPreset(preset) {
+    const p = { ...PRESET_DEFS[preset], ..._userPresets[preset] };
+    if (!p) return;
+    CFG.fuzzyEnable = p.fuzzyEnable;
+    CFG.fuzzyThresh = p.fuzzyThresh;
+    CFG.answerDelay = p.answerDelay;
+    CFG.autoLogin = p.autoLogin;
+    CFG.aiEnable = p.aiEnable;
+    syncSettingsUI();
+    const hint = document.getElementById('ata-presets-hint');
+    if (hint) hint.textContent = '已应用：' + p.name + ' — ' + p.hint;
+  }
+  function showPresetHint(sel) {
+    const hint = document.getElementById('ata-presets-hint');
+    if (!hint || !sel) { if (hint) hint.textContent = ''; return; }
+    const p = { ...PRESET_DEFS[sel], ..._userPresets[sel] };
+    if (hint) hint.textContent = p ? p.hint : '';
+  }
+
+  loadPresets();
+
+  // 预设选择提示
+  document.getElementById('ata-preset-select')?.addEventListener('change', function() {
+    showPresetHint(this.value);
+  });
+
+  // 应用预设
+  document.getElementById('ata-preset-apply')?.addEventListener('click', () => {
+    const sel = document.getElementById('ata-preset-select')?.value;
+    if (!sel) { alert('请先选择一个预设'); return; }
+    applyPreset(sel);
+  });
+
+  // 保存当前设置到预设
+  document.getElementById('ata-preset-save')?.addEventListener('click', () => {
+    const name = prompt('输入预设名称：');
+    if (!name?.trim()) return;
+    const presetName = name.trim();
+    _userPresets[presetName] = {
+      fuzzyEnable: CFG.fuzzyEnable,
+      fuzzyThresh: CFG.fuzzyThresh,
+      answerDelay: CFG.answerDelay,
+      autoLogin: CFG.autoLogin,
+      aiEnable: CFG.aiEnable,
+      hint: '自定义预设',
+    };
+    // 更新下拉框
+    const select = document.getElementById('ata-preset-select');
+    if (select) {
+      const opt = document.createElement('option');
+      opt.value = '__custom_' + presetName;
+      opt.textContent = '★ ' + presetName;
+      select.appendChild(opt);
+      select.value = opt.value;
+    }
+    savePresets();
+    const hint = document.getElementById('ata-presets-hint');
+    if (hint) hint.textContent = '已保存当前设置为：' + presetName;
   });
 
   /* =========================================================
@@ -3449,7 +4100,76 @@
     isResizing = false;
     resizeDir = '';
     hdr.style.cursor = 'move';
+    // 保存面板位置和大小
+    savePanelPos();
   });
+
+  // 面板位置记忆
+  const PANEL_POS_KEY = 'ata_panel_pos';
+  function savePanelPos() {
+    const pos = {
+      left: panel.style.left,
+      top: panel.style.top,
+      right: panel.style.right,
+      width: panel.style.width,
+      height: panel.style.height
+    };
+    try { GM_setValue(PANEL_POS_KEY, JSON.stringify(pos)); } catch {}
+  }
+  function loadPanelPos() {
+    try {
+      const saved = GM_getValue(PANEL_POS_KEY, null);
+      if (saved) {
+        const pos = JSON.parse(saved);
+        if (pos.left)  panel.style.left  = pos.left;
+        if (pos.top)   panel.style.top   = pos.top;
+        if (pos.right) panel.style.right = pos.right;
+        if (pos.width) panel.style.width  = pos.width;
+        if (pos.height) panel.style.height = pos.height;
+      }
+    } catch {}
+  }
+  loadPanelPos();
+
+  /* =========================================================
+     深色模式适配：检测页面背景色自动调整
+  ========================================================= */
+  function detectDarkMode() {
+    try {
+      const bg = window.getComputedStyle(document.body).backgroundColor;
+      const rgb = bg.match(/\d+/g);
+      if (rgb && rgb.length >= 3) {
+        const brightness = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000;
+        if (brightness < 128) {
+          panel.classList.add('ata-dark');
+        } else {
+          panel.classList.remove('ata-dark');
+        }
+      }
+    } catch {}
+  }
+  detectDarkMode();
+  // 监听主题变化
+  const observer = new MutationObserver(detectDarkMode);
+  observer.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+
+  // 深色模式 CSS 变量覆盖
+  GM_addStyle(`
+    #ata-panel.ata-dark {
+      --nm-bg: #1e2530;
+      --nm-shadow-light: #2a3441;
+      --nm-shadow-dark: #151a22;
+      --nm-text: #b8c4d4;
+      --nm-text-secondary: #7a8a9a;
+    }
+    #ata-panel.ata-dark #ata-log { background: rgba(0,0,0,0.2); color: #b8c4d4; }
+    #ata-panel.ata-dark input, #ata-panel.ata-dark textarea, #ata-panel.ata-dark select {
+      background: #1a2028;
+      color: #b8c4d4;
+      border-color: #3a4555;
+    }
+    #ata-panel.ata-dark #ata-lib-box { background: #1e2530; }
+  `);
 
   /* =========================================================
      初始化：检测题目数量
