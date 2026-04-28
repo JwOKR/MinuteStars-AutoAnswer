@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.43
+// @version      4.5.44
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
@@ -1009,85 +1009,76 @@
     }
   }
 
-  /** 通用 Gist 请求（优先 fetch，兜底 GM_xmlhttpRequest） */
+  /** 通用 Gist 请求（优先 GM_xmlhttpRequest，兜底 fetch） */
   async function _gistReq(method, url, body) {
     const token = CFG.cloudToken;
     uLog('📡 Gist 请求: ' + method + ' ' + url + ' (token前缀:' + (token ? token.substring(0,6) + '...' : '空') + ')', 'info');
 
-    // 优先使用 fetch（跨域支持好）
+    // 优先 GM_xmlhttpRequest（绕过 CORS）
+    if (typeof GM_xmlhttpRequest !== 'undefined') {
+      uLog('🔧 使用 GM_xmlhttpRequest', 'info');
+      return new Promise((resolve, reject) => {
+        const xhrOpts = {
+          method,
+          url,
+          headers: {
+            'Authorization': 'token ' + token,
+            'Content-Type': 'application/json',
+          },
+          onload: x => {
+            uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0, 300), 'info');
+            if (x.status >= 200 && x.status < 300) {
+              resolve(x.responseText);
+            } else {
+              let msg = 'HTTP ' + x.status;
+              try { const j = JSON.parse(x.responseText||'{}'); msg += ' - ' + (j.message||j.error||x.statusText); } catch {}
+              reject(new Error(msg));
+            }
+          },
+          onerror: () => {
+            uLog('❌ GM_xhr onerror', 'err');
+            reject(new Error('GM_xhr 网络错误'));
+          },
+          ontimeout: () => {
+            uLog('❌ GM_xhr timeout', 'err');
+            reject(new Error('GM_xhr 超时'));
+          },
+          onabort: () => reject(new Error('GM_xhr 请求中止')),
+          timeout: 30000,
+        };
+        // 有 body 时必须传 data，POST/PATCH 不能缺 body
+        if (body !== null && body !== undefined) {
+          xhrOpts.data = body;
+        }
+        GM_xmlhttpRequest(xhrOpts);
+      });
+    }
+
+    // 兜底：fetch
     if (typeof fetch !== 'undefined') {
+      uLog('🔧 使用 fetch（兜底）', 'info');
       try {
-        const opts = {
+        const resp = await fetch(url, {
           method,
           headers: {
-            'Authorization': 'Bearer ' + token,
+            'Authorization': 'token ' + token,
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
           },
-        };
-        if (body) opts.body = body;
-        const resp = await fetch(url, opts);
+          body: method !== 'GET' && method !== 'HEAD' ? body : undefined,
+        });
         const text = await resp.text();
-        uLog('📥 fetch 响应: ' + resp.status + ' | ' + text.substring(0, 200), 'info');
+        uLog('📥 fetch 响应: ' + resp.status, 'info');
         if (resp.ok) return text;
         let msg = 'HTTP ' + resp.status;
         try { const j = JSON.parse(text); msg += ' - ' + (j.message || j.error || resp.statusText); } catch {}
         throw new Error(msg);
       } catch (e) {
-        // fetch 失败，尝试 GM_xmlhttpRequest
-        if (typeof GM_xmlhttpRequest !== 'undefined') {
-          uLog('⚠️ fetch 失败，尝试 GM_xmlhttpRequest', 'warn');
-          return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-              method,
-              url,
-              headers: {
-                'Authorization': 'Bearer ' + token,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              },
-              data: body || undefined,
-              onload: x => {
-                uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0,200), 'info');
-                if (x.status >= 200 && x.status < 300) resolve(x.responseText);
-                else {
-                  let msg = 'HTTP ' + x.status;
-                  try { const j = JSON.parse(x.responseText||'{}'); msg += ' - ' + (j.message||j.error||x.statusText); } catch {}
-                  reject(new Error(msg));
-                }
-              },
-              onerror: () => reject(new Error('GM_xhr 网络错误')),
-              ontimeout: () => reject(new Error('GM_xhr 超时')),
-              onabort: () => reject(new Error('GM_xhr 请求中止')),
-              timeout: 25000,
-            });
-          });
-        }
+        uLog('❌ fetch 失败: ' + e.message, 'err');
         throw e;
       }
     }
 
-    // 最后兜底：GM_xmlhttpRequest
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method,
-        url,
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        data: body || undefined,
-        onload: x => {
-          uLog('📥 GM_xhr(fallback) 响应: ' + x.status, 'info');
-          if (x.status >= 200 && x.status < 300) resolve(x.responseText);
-          else reject(new Error('HTTP ' + x.status));
-        },
-        onerror: () => reject(new Error('GM_xhr 网络错误')),
-        ontimeout: () => reject(new Error('GM_xhr 超时')),
-        timeout: 25000,
-      });
-    });
+    throw new Error('无可用请求方式（fetch 和 GM_xmlhttpRequest 均不可用）');
   }
 
   /* =========================================================

@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.5.44
+
+### 🐛 Bug 修复
+- 修正 GitHub API Authorization Header 格式为 `token <token>`（GitHub 官方推荐格式）
+- 移除多余的 `Accept` header，确保请求头精简
+- 改进 GM_xmlhttpRequest 错误日志
+
 ## v4.5.43
 
 ### 🐛 Bug 修复
