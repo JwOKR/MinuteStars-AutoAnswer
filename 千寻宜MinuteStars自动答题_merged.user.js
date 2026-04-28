@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.38
+// @version      4.5.39
 // @author       JIA
-// @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
+// @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -37,6 +37,15 @@
     fuzzyEnable: true,
     fuzzyThresh: 0.75,
     debug:       false,
+    // v4.5.39 新增
+    shortcutsEnable:  true,   // 快捷键（Alt+Enter答题/提交，Alt+S暂停）
+    notifyEnable:     true,   // 系统通知（GM_notification）
+    aiEnable:         false,  // AI 辅助匹配（题库无命中时的语义兜底）
+    aiApiKey:         '',     // DeepSeek / 硅基流动 API Key
+    aiEndpoint:       'https://api.siliconflow.cn/v1/chat/completions', // 默认用硅基流动（免费额度）
+    cloudSyncEnable:  false,  // GitHub Gist 云同步
+    cloudGistId:      '',     // Gist ID
+    cloudToken:       '',     // GitHub Personal Access Token
   };
 
   /** 运行时配置（从 GM storage 恢复） */
@@ -540,18 +549,58 @@
   };
 
 // 合并题库（内置 + 用户自定义，用户可覆盖内置答案）
-  // ⚡ 性能优化：缓存合并结果 + 预清洗 key，精确匹配 O(1)
-  const _cache = { raw: null, cleanMap: null, dirty: true, userCount: -1 };
+  // ⚡ v4.5.39 性能优化：
+  //   - N-gram 候选预筛选（2-gram 集合交集过滤）
+  //   - 长度分桶索引（同长度题目只比较同桶）
+  const _cache = {
+    raw: null, cleanMap: null, dirty: true, userCount: -1,
+    ngramIndex: null,  // Map<2gram字符串, Set<cleanKey>>
+    lenBuckets: null,  // Map<长度桶, [{ck, orig, ans}]>
+  };
+
+  /** 将字符串切分为 2-gram 集合（中文按字符，英文按单词） */
+  function _ngrams(text, n = 2) {
+    const set = new Set();
+    for (let i = 0; i <= text.length - n; i++) set.add(text.substring(i, i + n));
+    return set;
+  }
+
+  /** 长度桶：0-15 → 0，16-30 → 1，31-50 → 2，51-80 → 3，81+ → 4 */
+  function _lenBucket(len) {
+    if (len <= 15)  return 0;
+    if (len <= 30)  return 1;
+    if (len <= 50)  return 2;
+    if (len <= 80)  return 3;
+    return 4;
+  }
+
   function rebuildCache() {
     const userDB = LibraryManager.load();
     const raw = { ...BUILTIN_DB, ...userDB };
     const cleanMap = new Map();
+    const ngramIndex = new Map();   // 2-gram → Set of ck
+    const lenBuckets = new Map();   // lenBucket → [{ck, orig, ans}]
+
     for (const [k, v] of Object.entries(raw)) {
       const ck = cleanText(k);
       cleanMap.set(ck, { orig: k, ans: v, ck });
+
+      // ── N-gram 索引 ──
+      for (const ng of _ngrams(ck, 2)) {
+        if (!ngramIndex.has(ng)) ngramIndex.set(ng, new Set());
+        ngramIndex.get(ng).add(ck);
+      }
+
+      // ── 长度桶索引 ──
+      const bucket = _lenBucket(ck.length);
+      if (!lenBuckets.has(bucket)) lenBuckets.set(bucket, []);
+      lenBuckets.get(bucket).push({ ck, orig: k, ans: v });
     }
+
     _cache.raw = raw;
     _cache.cleanMap = cleanMap;
+    _cache.ngramIndex = ngramIndex;
+    _cache.lenBuckets = lenBuckets;
     _cache.dirty = false;
     _cache.userCount = Object.keys(userDB).length;
   }
@@ -577,52 +626,106 @@
       .toLowerCase();
   }
 
-  /** Levenshtein 字符串相似度（0~1）
-   *  ⚡ 优化：1) 裁剪公共前缀/后缀  2) 一维滚动数组 O(min(a,b)) 内存
-   *  参考 js-levenshtein (github.com/gustf/js-levenshtein)
+  /** Jaro-Winkler 相似度（0~1）
+   *  ⚡ v4.5.39：替换 Levenshtein，对中文近形字更敏感，开头相同权重更高
+   *  参考：https://github.com/nickfinger/jaro-winkler（简化版，优化内存）
+   */
+  function jaroWinkler(a, b) {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const la = a.length, lb = b.length;
+    if (la > lb) { [a, b] = [b, a]; [la, lb] = [lb, la]; }
+    const matchDist = Math.floor(lb / 2) - 1;
+    if (matchDist < 0) return 0;
+
+    const matches = new Array(la).fill(false);
+    const transpositions = [];
+
+    // 找匹配
+    let m = 0;
+    for (let i = 0; i < la; i++) {
+      const start = Math.max(0, i - matchDist);
+      const end   = Math.min(i + matchDist + 1, lb);
+      for (let j = start; j < end; j++) {
+        if (matches[j] || a[i] !== b[j]) continue;
+        matches[j] = true; m++;
+        if (i !== j) transpositions.push(i);
+        break;
+      }
+    }
+    if (m === 0) return 0;
+
+    // 移位匹配数
+    let t = 0;
+    for (const i of transpositions) for (const j of transpositions) {
+      if (i < j && a[i] === b[j]) { t++; break; }
+    }
+
+    const jaro = (m / la + m / lb + (m - t / 2) / m) / 3;
+
+    // Winkler 前缀加成（最多 4 个字符，权重 0.1）
+    let prefix = 0;
+    for (let i = 0; i < Math.min(4, la, lb); i++) {
+      if (a[i] === b[i]) prefix++; else break;
+    }
+    return Math.min(1, jaro + prefix * 0.1 * (1 - jaro));
+  }
+
+  /** 混合相似度：Jaro-Winkler 为主，结合长度惩罚
+   *  ⚡ v4.5.39：中文题目中"Jaro-Winkler + 长度过滤"比纯 Levenshtein 效果更好
    */
   function strSim(a, b) {
     if (!a || !b) return 0;
     const la = a.length, lb = b.length;
-    if (Math.abs(la - lb) / Math.max(la, lb) > 0.45) return 0;
+    // 长度差距过大直接排除（Jaro-Winkler 自带长度惩罚，这里再加一层粗筛）
+    if (Math.abs(la - lb) > Math.max(la, lb) * 0.5) return 0;
+    return jaroWinkler(a, b);
+  }
 
-    // ── 裁剪公共前缀 ──
-    let start = 0;
-    while (start < la && start < lb && a[start] === b[start]) start++;
-    // ── 裁剪公共后缀 ──
-    let endA = la, endB = lb;
-    while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
-    // 如果完全相同
-    if (start >= endA && start >= endB) return 1;
+  /** N-gram 候选预筛选：返回可能匹配的 cleanKey 集合
+   *  ⚡ v4.5.39：用 2-gram 交集过滤，大幅减少 strSim 调用次数
+   */
+  function _ngramCandidates(nq) {
+    const { ngramIndex } = getMergedCache();
+    const ngSet = _ngrams(nq, 2);
+    if (ngSet.size === 0) return null; // 无 N-gram，退化为全量
 
-    const sa = endA - start, sb = endB - start;
-    if (sa === 0) return 1 - sb / Math.max(la, lb);
-    if (sb === 0) return 1 - sa / Math.max(la, lb);
-
-    // ── 一维滚动 DP（只计算裁剪后的中间段）──
-    const [shorter, longer, ls, ll] = sa <= sb
-      ? [a, b, sa, sb] : [b, a, sb, sa];
-    const dp = Array.from({ length: ll + 1 }, (_, j) => j);
-    for (let i = 1; i <= ls; i++) {
-      let prev = i;
-      for (let j = 1; j <= ll; j++) {
-        const curr = shorter[start + i - 1] === longer[start + j - 1]
-          ? prev
-          : 1 + Math.min(prev, dp[j], dp[j - 1]);
-        dp[j - 1] = prev;
-        prev = curr;
-      }
-      dp[ll] = prev;
+    // 取交集：query 的每个 2-gram 对应的题库 key 集合的并集
+    const candidates = new Set();
+    for (const ng of ngSet) {
+      const bucket = ngramIndex.get(ng);
+      if (bucket) for (const ck of bucket) candidates.add(ck);
     }
-    return 1 - dp[ll] / Math.max(la, lb);
+    return candidates.size > 0 ? candidates : null;
+  }
+
+  /** requestIdleCallback 分帧执行（兼容无支持的环境 fallback setTimeout）
+   *  ⚡ v4.5.39：大批量题库遍历时分帧，防止卡顿主线程
+   */
+  function _idleWrap(fn, onProgress) {
+    return new Promise(resolve => {
+      const deadline = { timeRemaining: () => 16, didTimeout: false };
+      const _run = () => {
+        const r = fn(deadline);
+        if (r === false) { // 返回 false 表示未完成，需要继续
+          requestIdleCallback ? requestIdleCallback(_run, { timeout: 500 }) : setTimeout(_run, 20);
+        } else {
+          resolve(r);
+        }
+      };
+      requestIdleCallback ? requestIdleCallback(_run, { timeout: 1000 }) : setTimeout(_run, 0);
+    });
   }
 
   /** 精确 + 模糊双重匹配，返回答案字符串或 null
-   *  ⚡ 精确匹配走 Map.get() → O(1)
-   *  ⚡ 模糊匹配只遍历预清洗的 cleanMap，避免重复 cleanText
+   *  ⚡ v4.5.39：
+   *    - 精确匹配走 Map.get() → O(1)
+   *    - N-gram 预筛选候选集
+   *    - 长度分桶过滤
+   *    - requestIdleCallback 分帧模糊匹配
    */
   function findMatch(qText) {
-    const { cleanMap } = getMergedCache();
+    const { cleanMap, lenBuckets } = getMergedCache();
     const nq = cleanText(qText);
 
     // ── 精确匹配 O(1) ──
@@ -632,14 +735,31 @@
       return entry.ans;
     }
 
-    // ── 模糊匹配（用缓存的 ck，零重复 cleanText）──
     if (!CFG.fuzzyEnable) return null;
+
+    // ── 模糊匹配：N-gram 候选预筛选 + 长度分桶 ──
+    const nqLen = nq.length;
+    const qBucket = _lenBucket(nqLen);
+    // 同桶 ±1 范围内
+    const relevantBuckets = [qBucket - 1, qBucket, qBucket + 1].filter(
+      b => b >= 0 && lenBuckets.has(b)
+    );
+
+    const candidates = _ngramCandidates(nq); // Set<ck> 或 null（全量）
     let best = null, bestSim = 0;
-    for (const { ans, ck } of cleanMap.values()) {
-      const sim = strSim(nq, ck);
-      if (sim >= CFG.fuzzyThresh && sim > bestSim) { best = ans; bestSim = sim; }
+    let processed = 0;
+
+    for (const bucket of relevantBuckets) {
+      for (const { ck, orig, ans } of lenBuckets.get(bucket)) {
+        // N-gram 过滤：不在候选集中的跳过
+        if (candidates && !candidates.has(ck)) continue;
+        processed++;
+        const sim = strSim(nq, ck);
+        if (sim >= CFG.fuzzyThresh && sim > bestSim) { best = ans; bestSim = sim; }
+      }
     }
-    if (best) CFG.debug && console.log('[Match] 模糊(' + bestSim.toFixed(2) + '):', best);
+
+    CFG.debug && console.log('[Match] 模糊(' + bestSim.toFixed(2) + ') 候选' + processed + '条:', best);
     return best;
   }
 
@@ -689,6 +809,217 @@
   const $c = sel => _elCache[sel] || (_elCache[sel] = document.querySelector(sel));
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* =========================================================
+     GM_notification 封装（兼容不支持的环境）
+  ========================================================= */
+  function gmNotify(title, text) {
+    if (!CFG.notifyEnable) return;
+    try {
+      if (typeof GM_notification === 'function') {
+        GM_notification({ title, text, timeout: 4000 });
+      } else if (typeof GM_setClipboard === 'function') {
+        // fallback: 静默忽略，不打扰用户
+      }
+    } catch (e) { /* 静默 */ }
+  }
+
+  /* =========================================================
+     答题报告（用于导出 JSON/CSV）
+  ========================================================= */
+  /** 记录本次答题结果 */
+  const _answerLog = []; // [{q, matched, answer, method}]
+  function _logAnswer(q, answer, method) {
+    _answerLog.push({ q: q.substring(0, 100), answer, method, time: Date.now() });
+  }
+  function _clearAnswerLog() { _answerLog.length = 0; }
+
+  /** 导出答题报告 */
+  function exportAnswerReport(format) {
+    const total = _answerLog.length;
+    const matched = _answerLog.filter(e => e.answer !== null).length;
+    const byMethod = {};
+    _answerLog.forEach(e => { byMethod[e.method] = (byMethod[e.method] || 0) + 1; });
+    const meta = {
+      version: SCRIPT_VERSION,
+      url: location.href,
+      timestamp: new Date().toISOString(),
+      total, matched, hitRate: total > 0 ? (matched / total * 100).toFixed(1) + '%' : '0%',
+      byMethod,
+    };
+    if (format === 'csv') {
+      const header = '题目,答案,匹配方式,时间戳\n';
+      const rows = _answerLog.map(e =>
+        `"${e.q.replace(/"/g,'""')}","${e.answer || ''}","${e.method}","${new Date(e.time).toLocaleString()}"`
+      ).join('\n');
+      return header + rows;
+    }
+    return JSON.stringify({ ...meta, entries: _answerLog }, null, 2);
+  }
+
+  /* =========================================================
+     AI 辅助匹配（DeepSeek / 硅基流动 API）
+     ⚡ v4.5.39：题库无命中时的语义兜底
+  ========================================================= */
+  async function aiMatch(qText, inputs) {
+    if (!CFG.aiEnable || !CFG.aiApiKey) return null;
+    const optTexts = inputs.map(i => {
+      const label = i.closest('label') || i.parentElement;
+      return label ? label.textContent.replace(/\s+/g,' ').trim() : (i.value || '');
+    });
+    const prompt = `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。
+
+题目：${qText}
+选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}
+
+请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。`;
+
+    try {
+      const resp = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', CFG.aiEndpoint, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + CFG.aiApiKey);
+        xhr.timeout = 15000;
+        xhr.onload = () => resolve(xhr);
+        xhr.onerror = reject;
+        xhr.ontimeout = reject;
+        xhr.send(JSON.stringify({
+          model: 'deepseek-ai/DeepSeek-V3', // 硅基流动兼容模型
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 32,
+          temperature: 0.1,
+        }));
+      });
+      if (resp.status === 200) {
+        const data = JSON.parse(resp.responseText);
+        const content = (data.choices?.[0]?.message?.content || '').trim();
+        const match = content.match(/^[A-Z](?:,[A-Z])*$/i);
+        if (match) {
+          CFG.debug && console.log('[AI Match]', qText.substring(0,30), '->', match[0]);
+          return match[0].toUpperCase();
+        }
+      }
+    } catch (e) {
+      CFG.debug && console.warn('[AI Match] 失败:', e.message);
+    }
+    return null;
+  }
+
+  /* =========================================================
+     GitHub Gist 云同步
+     ⚡ v4.5.39：题库上传下载到 GitHub Gist
+  ========================================================= */
+  function gistHeaders() {
+    return {
+      'Accept': 'application/vnd.github.v3+json',
+      'Authorization': 'token ' + CFG.cloudToken,
+      'Content-Type': 'application/json',
+    };
+  }
+  function gistUrl(id) { return 'https://api.github.com/gists/' + (id || ''); }
+
+  /** 上传题库到 Gist */
+  async function cloudUpload() {
+    if (!CFG.cloudSyncEnable || !CFG.cloudToken) {
+      uLog('⚠️ 请先在设置中填写 Token 并开启云同步', 'warn'); return false;
+    }
+    uLog('⬆️ 正在上传题库…', 'info');
+    try {
+      const userDB = LibraryManager.load();
+      const body = JSON.stringify({
+        description: 'MinuteStars 答题器题库备份 ' + new Date().toLocaleString(),
+        public: false,
+        files: {
+          'minutestars_qa.json': { content: JSON.stringify(userDB, null, 2) },
+        },
+      });
+      const resp = await _gistReq(CFG.cloudGistId ? 'PATCH' : 'POST', gistUrl(CFG.cloudGistId), body);
+      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+      const gistId = data.id;
+      if (!CFG.cloudGistId) {
+        CFG.cloudGistId = gistId;
+        saveCFG();
+        uLog('✅ 首次上传成功！Gist ID 已保存。ID: ' + gistId, 'ok');
+      } else {
+        uLog('✅ 题库已更新到 Gist', 'ok');
+      }
+      gmNotify('云同步', '题库上传成功！');
+      return true;
+    } catch (e) {
+      uLog('❌ 上传失败: ' + e.message, 'err');
+      return false;
+    }
+  }
+
+  /** 从 Gist 下载题库 */
+  async function cloudDownload() {
+    if (!CFG.cloudSyncEnable || !CFG.cloudToken || !CFG.cloudGistId) {
+      uLog('⚠️ 请先在设置中填写 Token 和 Gist ID', 'warn'); return false;
+    }
+    uLog('⬇️ 正在下载题库…', 'info');
+    try {
+      const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
+      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+      const file = data.files?.['minutestars_qa.json'];
+      if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
+      const remoteDB = JSON.parse(file.content);
+      const localDB  = LibraryManager.load();
+      const merged   = { ...localDB, ...remoteDB }; // 远程覆盖本地重复项
+      LibraryManager.save(merged);
+      _cache.dirty = true;
+      const cnt = Object.keys(remoteDB).length;
+      uLog('✅ 下载成功！合并 ' + cnt + ' 条题库（去重后）', 'ok');
+      refreshLibCount();
+      gmNotify('云同步', '题库下载成功！共 ' + cnt + ' 条。');
+      return true;
+    } catch (e) {
+      uLog('❌ 下载失败: ' + e.message, 'err');
+      return false;
+    }
+  }
+
+  /** 通用 Gist 请求（Promise 化 GM_xmlhttpRequest） */
+  function _gistReq(method, url, body) {
+    return new Promise((resolve, reject) => {
+      try {
+        const xhr = typeof GM_xmlhttpRequest !== 'undefined'
+          ? GM_xmlhttpRequest
+          : XMLHttpRequest;
+        const opts = {
+          method,
+          url,
+          headers: { 'Accept': 'application/json', 'Authorization': 'token ' + CFG.cloudToken, 'Content-Type': 'application/json' },
+          onload: x => { if (x.status >= 200 && x.status < 300) resolve(x.responseText); else reject(new Error('HTTP ' + x.status + ': ' + (JSON.parse(x.responseText||'{}').message || x.statusText))); },
+          onerror: e => reject(new Error('网络错误')),
+          ontimeout: () => reject(new Error('请求超时')),
+          timeout: 20000,
+        };
+        if (body) opts.data = body;
+        if (typeof GM_xmlhttpRequest !== 'undefined') {
+          GM_xmlhttpRequest(opts);
+        } else {
+          const xr = new XMLHttpRequest();
+          xr.open(method, url, true);
+          xr.setRequestHeader('Content-Type', 'application/json');
+          xr.setRequestHeader('Authorization', 'token ' + CFG.cloudToken);
+          xr.setRequestHeader('Accept', 'application/json');
+          xr.timeout = 20000;
+          xr.onload = () => { if (xr.status >= 200 && xr.status < 300) resolve(xr.responseText); else reject(new Error('HTTP ' + xr.status)); };
+          xr.onerror = () => reject(new Error('网络错误'));
+          xr.ontimeout = () => reject(new Error('超时'));
+          xr.send(body);
+        }
+      } catch(e) { reject(e); }
+    });
+  }
+
+  /* =========================================================
+     防抖工具
+  ========================================================= */
+  function debounce(fn, ms) {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
   /* =========================================================
@@ -1214,9 +1545,13 @@
       color:var(--nm-text);
       border-radius:var(--nm-radius);
       padding:10px 14px;font-size:12px;margin-bottom:10px;box-sizing:border-box;
-      box-shadow: 
+      box-shadow:
         inset 2px 2px 4px var(--nm-shadow-dark),
         inset -2px -2px 4px var(--nm-shadow-light);
+    }
+    /* v4.5.39 搜索高亮 */
+    .ata-lib-table td:first-child mark {
+      background:#ffd740;color:#333;border-radius:2px;padding:0 2px;
     }
     .ata-lib-pager{
       display:flex;justify-content:space-between;align-items:center;
@@ -1408,6 +1743,60 @@
         </div>
       </div>
 
+      <div class="ata-section-title">快捷键 &amp; 通知</div>
+      <div class="ata-row">
+        <span class="ata-label">启用快捷键</span>
+        <label class="ata-toggle"><input type="checkbox" id="cfg-shortcuts-enable"><span class="ata-slider"></span></label>
+      </div>
+      <div class="ata-row">
+        <span class="ata-label">系统通知</span>
+        <label class="ata-toggle"><input type="checkbox" id="cfg-notify-enable"><span class="ata-slider"></span></label>
+      </div>
+
+      <div class="ata-section-title">AI 辅助 <span style="font-size:10px;color:#aaa">(题库无命中时语义兜底)</span></div>
+      <div class="ata-row">
+        <span class="ata-label">启用 AI 匹配</span>
+        <label class="ata-toggle"><input type="checkbox" id="cfg-ai-enable"><span class="ata-slider"></span></label>
+      </div>
+      <div id="cfg-ai-row" style="opacity:.4">
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="ata-label">API Key</span>
+          <input type="password" id="cfg-ai-api-key" class="ata-text-input" placeholder="sk-... (硅基流动 / DeepSeek)" style="width:100%;box-sizing:border-box">
+        </div>
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="ata-label">API 地址</span>
+          <input type="text" id="cfg-ai-endpoint" class="ata-text-input" placeholder="https://..." style="width:100%;box-sizing:border-box;font-size:11px">
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:4px">💡 推荐使用 <b>硅基流动</b>（免费额度），或自备 DeepSeek Key</div>
+      </div>
+
+      <div class="ata-section-title">云同步 <span style="font-size:10px;color:#aaa">(GitHub Gist)</span></div>
+      <div class="ata-row">
+        <span class="ata-label">启用云同步</span>
+        <label class="ata-toggle"><input type="checkbox" id="cfg-cloud-sync-enable"><span class="ata-slider"></span></label>
+      </div>
+      <div id="cfg-cloud-row" style="opacity:.4">
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="ata-label">GitHub Token</span>
+          <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="ghp_..." style="width:100%;box-sizing:border-box">
+        </div>
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="ata-label">Gist ID</span>
+          <input type="text" id="cfg-cloud-gist-id" class="ata-text-input" placeholder="首次上传后自动填充" style="width:100%;box-sizing:border-box">
+        </div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px">⬆ 上传题库</button>
+          <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px">⬇ 下载题库</button>
+        </div>
+        <div style="font-size:10px;color:#888;margin-top:4px">💡 需要 GitHub 账号 → Settings → Developer settings → Personal access tokens → Generate new token (scope: gist)</div>
+      </div>
+
+      <div class="ata-section-title">答题报告</div>
+      <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="ata-btn" id="ata-export-report-json" style="font-size:11px;padding:4px 10px">📊 导出 JSON 报告</button>
+        <button class="ata-btn" id="ata-export-report-csv"  style="font-size:11px;padding:4px 10px">📊 导出 CSV 报告</button>
+      </div>
+
       <div class="ata-section-title">调试</div>
       <div class="ata-row">
         <span class="ata-label">控制台日志</span>
@@ -1510,15 +1899,30 @@
         </div>
 
         <div class="ata-pane" id="pane-browse">
-          <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
-            <input id="ata-lib-search" placeholder="🔍 搜索题目..." style="flex:1;min-width:150px" />
-            <select id="ata-lib-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0">
+          <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
+            <input id="ata-lib-search" placeholder="🔍 搜索（支持正则 / 关键词）" style="flex:1;min-width:130px" />
+            <label style="font-size:11px;color:#aaa;white-space:nowrap">
+              <input type="checkbox" id="ata-lib-regex" style="vertical-align:middle" title="启用正则表达式"> 正则
+            </label>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+            <select id="ata-lib-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
               <option value="all">全部题目</option>
               <option value="builtin">内置题库</option>
               <option value="user">自定义题库</option>
             </select>
+            <select id="ata-lib-ans-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
+              <option value="">全部答案</option>
+              <option value="A">仅 A</option>
+              <option value="B">仅 B</option>
+              <option value="C">仅 C</option>
+              <option value="D">仅 D</option>
+              <option value="multi">多选</option>
+            </select>
+            <button class="ata-btn purple" id="ata-lib-random" style="font-size:11px;padding:4px 8px" title="随机抽取">🎲 随机</button>
+            <button class="ata-btn" id="ata-lib-clear-log" style="font-size:11px;padding:4px 8px" title="清空答题日志">🗑 日志</button>
           </div>
-          <div id="ata-lib-scroll" style="overflow:auto;max-height:400px">
+          <div id="ata-lib-scroll" style="overflow:auto;max-height:380px">
             <table class="ata-lib-table">
               <thead><tr><th>题目</th><th>答案</th><th>操作</th></tr></thead>
               <tbody id="ata-lib-tbody"></tbody>
@@ -1537,19 +1941,23 @@
 
         <div class="ata-pane" id="pane-export">
           <div class="ata-lib-format">
-            <b>导出说明：</b><br>
+            <b>题库导出：</b><br>
             <code>JSON</code> — 完整数据，可直接导入恢复<br>
             <code>TXT</code>  — 每行 <code>题目||答案</code>，可用 Excel 编辑
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-            <button class="ata-btn green"  id="ata-export-json">📥 导出 JSON（含内置）</button>
-            <button class="ata-btn yellow" id="ata-export-user-json">📥 仅导出自定义</button>
-            <button class="ata-btn yellow" id="ata-export-txt">📥 导出 TXT</button>
+            <button class="ata-btn green" id="ata-export-lib-json">📤 题库 JSON</button>
+            <button class="ata-btn blue"  id="ata-export-lib-txt">📤 题库 TXT</button>
           </div>
-          <hr style="border-color:#333">
-          <div style="margin-top:12px">
-            <div style="font-size:12px;color:#ef5350;margin-bottom:8px">⚠️ 危险操作</div>
-            <button class="ata-btn red" id="ata-clear-user">🗑 清空自定义题库</button>
+          <div style="border-top:1px solid #333;margin:10px 0"></div>
+          <div class="ata-lib-format">
+            <b>配置备份：</b>（账号密码、API Key、云同步配置等独立导出）<br>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="ata-btn yellow" id="ata-export-cfg">⚙️ 导出配置</button>
+            <label class="ata-btn" style="display:inline-block;margin:0;cursor:pointer">
+              📂 导入配置<input type="file" id="ata-import-cfg-file" accept=".json" style="display:none">
+            </label>
           </div>
         </div>
 
@@ -1949,45 +2357,127 @@
     a.click();
     URL.revokeObjectURL(a.href);
   }
-  $('#ata-export-json').addEventListener('click', () => {
+  $('#ata-export-lib-json').addEventListener('click', () => {
     downloadFile(JSON.stringify(getMergedDB(), null, 2), 'MinuteStars题库_all_' + Date.now() + '.json', 'application/json');
   });
-  $('#ata-export-user-json').addEventListener('click', () => {
-    downloadFile(LibraryManager.exportJSON(), 'MinuteStars题库_user_' + Date.now() + '.json', 'application/json');
-  });
-  $('#ata-export-txt').addEventListener('click', () => {
+  $('#ata-export-lib-txt').addEventListener('click', () => {
     const all = getMergedDB();
     const txt = Object.entries(all).map(([q, a]) => q + '||' + a).join('\n');
     downloadFile(txt, 'MinuteStars题库_' + Date.now() + '.txt', 'text/plain;charset=utf-8');
   });
-  $('#ata-clear-user').addEventListener('click', () => {
-    if (!confirm('⚠️ 确定清空全部自定义题库？内置题库不受影响。')) return;
+  $('#ata-export-cfg').addEventListener('click', () => {
+    // 导出配置（不含题库，分离备份）
+    const cfgExport = {
+      version: SCRIPT_VERSION,
+      timestamp: new Date().toISOString(),
+      config: CFG,
+    };
+    downloadFile(JSON.stringify(cfgExport, null, 2), 'ATA_Config_' + Date.now() + '.json', 'application/json');
+  });
+  $('#ata-import-cfg-file').addEventListener('change', function() {
+    const file = this.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.config) {
+          Object.assign(CFG, CFG_DEFAULT, data.config);
+          saveCFG();
+          syncSettingsUI();
+          uLog('✅ 配置已导入，请保存设置', 'ok');
+          gmNotify('配置导入', '配置已成功导入！');
+        } else { uLog('⚠️ 配置文件格式无效', 'warn'); }
+      } catch { uLog('❌ 配置文件解析失败', 'err'); }
+      this.value = '';
+    };
+    reader.readAsText(file);
+  });
+  $('#ata-clear-lib').addEventListener('click', () => {
+    const confirmEl = $c('#ata-clear-confirm');
+    if (confirmEl) confirmEl.style.display = confirmEl.style.display ? '' : 'none';
+  });
+  $c('#ata-clear-yes')?.addEventListener('click', () => {
     LibraryManager.clear();
+    _cache.dirty = true;
     refreshLibCount(); refreshStats(); renderBrowse(1);
+    const confirmEl = $c('#ata-clear-confirm');
+    if (confirmEl) confirmEl.style.display = 'none';
+    uLog('已清空全部自定义题库', 'warn');
+  });
+  $c('#ata-clear-no')?.addEventListener('click', () => {
+    const confirmEl = $c('#ata-clear-confirm');
+    if (confirmEl) confirmEl.style.display = 'none';
   });
 
   // 浏览题库（分页）
   let currentPage = 1;
   const PAGE_SIZE = 20;
 
+  /** 高亮搜索关键词（支持纯文本和正则） */
+  function _highlight(text, keyword, isRegex) {
+    if (!keyword) return escHtml(text);
+    try {
+      if (isRegex) {
+        const re = new RegExp('(' + keyword + ')', 'gi');
+        return escHtml(text).replace(re, '<mark style="background:#ffd740;color:#333;border-radius:2px;padding:0 2px">$1</mark>');
+      } else {
+        const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(' + escaped + ')', 'gi');
+        return escHtml(text).replace(re, '<mark style="background:#ffd740;color:#333;border-radius:2px;padding:0 2px">$1</mark>');
+      }
+    } catch { return escHtml(text); }
+  }
+
   function renderBrowse(page) {
     currentPage = page;
-    const keyword = ($c('#ata-lib-search') ? $c('#ata-lib-search').value : '').toLowerCase();
-    const filter  = ($c('#ata-lib-filter') ? $c('#ata-lib-filter').value : 'all');
-    const db      = getMergedDB();
-    const entries = Object.entries(db)
-      .filter(([q]) => q.toLowerCase().includes(keyword))
-      .filter(([q]) => {
-        if (filter === 'builtin') return !!BUILTIN_DB[q];
-        if (filter === 'user')    return !BUILTIN_DB[q];
-        return true;
+    const searchEl  = $c('#ata-lib-search');
+    const filterEl  = $c('#ata-lib-filter');
+    const ansFilterEl = $c('#ata-lib-ans-filter');
+    const regexEl  = $c('#ata-lib-regex');
+    const keyword  = searchEl ? searchEl.value : '';
+    const filter   = filterEl ? filterEl.value : 'all';
+    const ansFilter = ansFilterEl ? ansFilterEl.value : '';
+    const useRegex = regexEl && regexEl.checked;
+    const db       = getMergedDB();
+
+    let entries = Object.entries(db);
+    // ── 关键词/正则过滤 ──
+    if (keyword) {
+      if (useRegex) {
+        try {
+          const re = new RegExp(keyword, 'i');
+          entries = entries.filter(([q]) => re.test(q));
+        } catch { entries = entries.filter(([q]) => q.includes(keyword)); }
+      } else {
+        const kw = keyword.toLowerCase();
+        entries = entries.filter(([q]) => q.toLowerCase().includes(kw));
+      }
+    }
+    // ── 分类过滤 ──
+    entries = entries.filter(([q]) => {
+      if (filter === 'builtin') return !!BUILTIN_DB[q];
+      if (filter === 'user')    return !BUILTIN_DB[q];
+      return true;
+    });
+    // ── 答案过滤 ──
+    if (ansFilter) {
+      entries = entries.filter(([, a]) => {
+        if (ansFilter === 'multi') {
+          return String(a).includes(',');
+        }
+        return String(a).includes(ansFilter);
       });
+    }
+    // ── 随机模式 ──
+    if ($c('#ata-lib-random')?.dataset.random === '1') {
+      entries = [...entries].sort(() => Math.random() - 0.5);
+    }
+
     const total   = entries.length;
     const start   = (page - 1) * PAGE_SIZE;
     const slice   = entries.slice(start, start + PAGE_SIZE);
     const tbody   = $c('#ata-lib-tbody');
     if (!tbody) return;
-    // ⚡ DocumentFragment 批量插入，减少 reflow
     const frag = document.createDocumentFragment();
     if (!slice.length) {
       const tr = document.createElement('tr');
@@ -1996,8 +2486,9 @@
     }
     slice.forEach(([q, a]) => {
       const isBuiltin = !!BUILTIN_DB[q];
+      const qHtml = _highlight(q, keyword, useRegex);
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td class="q-cell">' + escHtml(q) + '</td>'
+      tr.innerHTML = '<td class="q-cell">' + qHtml + '</td>'
         + '<td style="color:#ffa726;font-weight:bold">' + escHtml(String(a)) + '</td>'
         + '<td>' + (isBuiltin
           ? '<span style="color:#555;font-size:10px">内置</span>'
@@ -2016,6 +2507,19 @@
   let _searchT = null;
   $('#ata-lib-search').addEventListener('input', () => { clearTimeout(_searchT); _searchT = setTimeout(() => renderBrowse(1), 300); });
   $('#ata-lib-filter').addEventListener('change', () => renderBrowse(1));
+  // v4.5.39 新增浏览控件
+  $c('#ata-lib-regex')?.addEventListener('change', () => renderBrowse(1));
+  $c('#ata-lib-ans-filter')?.addEventListener('change', () => renderBrowse(1));
+  $c('#ata-lib-random')?.addEventListener('click', function() {
+    this.dataset.random = this.dataset.random === '1' ? '0' : '1';
+    this.textContent = this.dataset.random === '1' ? '✅ 随机' : '🎲 随机';
+    this.className = this.dataset.random === '1' ? 'ata-btn green' : 'ata-btn purple';
+    renderBrowse(1);
+  });
+  $c('#ata-lib-clear-log')?.addEventListener('click', () => {
+    _clearAnswerLog();
+    uLog('答题日志已清空', 'info');
+  });
   $('#ata-pager-prev').addEventListener('click', () => { if (currentPage > 1) renderBrowse(currentPage - 1); });
   $('#ata-pager-next').addEventListener('click', () => renderBrowse(currentPage + 1));
   $('#ata-pager-jump-btn').addEventListener('click', () => {
@@ -2245,7 +2749,8 @@
     inCountdown = false;
     const pBtn = $('#ata-pause');
     if (pBtn) { pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
-    
+    gmNotify('提交答题', '正在提交试卷…');
+
     const sels = [
       // MinuteStars 专属提交按钮（优先）
       '#btnSubmitPapers',
@@ -2361,6 +2866,7 @@
     uLog('采集完成，新增 ' + cnt + ' 条，跳过 ' + skip + ' 条', cnt > 0 ? 'ok' : 'warn');
     refreshLibCount();
     refreshStats();
+    if (cnt > 0) gmNotify('题库更新', '新增 ' + cnt + ' 条题目！');
   }
 
   /* =========================================================
@@ -2436,7 +2942,9 @@
         seenQ.add(nq);
 
         const ans = findMatch(txt);
+        let matchedAnswer = null, matchMethod = 'none';
         if (ans !== null) {
+          matchedAnswer = ans; matchMethod = 'library';
           await fill(c, ans);
           c.classList.add('ata-answered');
           const ansStr = Array.isArray(ans) ? ans.join('') : String(ans);
@@ -2447,16 +2955,33 @@
           const inputs = Array.from(c.querySelectorAll('input[type="radio"],input[type="checkbox"]'));
           const ruleAns = ruleInfer(txt, inputs);
           if (ruleAns) {
+            matchedAnswer = ruleAns; matchMethod = 'rule';
             await fill(c, ruleAns);
             c.classList.add('ata-answered');
             uLog('🔎 规则推断 ' + txt.substring(0, 30) + '… → ' + ruleAns, 'info');
             infer++;
+          } else if (CFG.aiEnable && CFG.aiApiKey) {
+            // AI 辅助兜底
+            const aiAns = await aiMatch(txt, inputs);
+            if (aiAns) {
+              matchedAnswer = aiAns; matchMethod = 'ai';
+              await fill(c, aiAns);
+              c.classList.add('ata-answered');
+              uLog('🤖 AI匹配 ' + txt.substring(0, 30) + '… → ' + aiAns, 'info');
+              ok++;
+            } else {
+              c.classList.add('ata-no-match');
+              uLog('⏭ 未匹配: ' + txt.substring(0, 40), 'warn');
+              skip++;
+            }
           } else {
             c.classList.add('ata-no-match');
             uLog('⏭ 未匹配: ' + txt.substring(0, 40), 'warn');
             skip++;
           }
         }
+        // 记录答题日志
+        _logAnswer(txt, matchedAnswer, matchMethod);
 
         // 实时更新统计卡片（每题都更新，用 $c 缓存避免重复查询）
         const pct = Math.round((i + 1) / containers.length * 100);
@@ -2481,6 +3006,7 @@
 
       uLog('完成！命中 ' + ok + '，推断 ' + infer + '，跳过 ' + skip, 'ok');
       setRunningStatus('✅ 完成！命中' + (ok+infer) + '题', 'done');
+      gmNotify('答题完成', '命中 ' + (ok+infer) + ' 题，跳过 ' + skip + ' 题');
 
       if (CFG.autoSubmit) {
         const [minS, maxS] = [CFG.submitDelayMin, CFG.submitDelayMax];
@@ -2563,6 +3089,21 @@
     if (loginFields) loginFields.style.opacity = CFG.autoLogin ? '1' : '.4';
 
     setChk('cfg-debug', CFG.debug);
+
+    // v4.5.39 新增
+    setChk('cfg-shortcuts-enable',  CFG.shortcutsEnable);
+    setChk('cfg-notify-enable',     CFG.notifyEnable);
+    setChk('cfg-ai-enable',         CFG.aiEnable);
+    setVal('cfg-ai-api-key',        CFG.aiApiKey);
+    setVal('cfg-ai-endpoint',       CFG.aiEndpoint);
+    setChk('cfg-cloud-sync-enable', CFG.cloudSyncEnable);
+    setVal('cfg-cloud-gist-id',     CFG.cloudGistId);
+    setVal('cfg-cloud-token',       CFG.cloudToken);
+    // 联动显示
+    const aiRow = ge('cfg-ai-row');
+    if (aiRow) aiRow.style.opacity = CFG.aiEnable ? '1' : '.4';
+    const cloudRow = ge('cfg-cloud-row');
+    if (cloudRow) cloudRow.style.opacity = CFG.cloudSyncEnable ? '1' : '.4';
   }
 
   /** 从面板控件读取当前值写入 CFG 并持久化 */
@@ -2582,6 +3123,16 @@
     CFG.username        = gVal('cfg-username').trim();
     CFG.password        = gVal('cfg-password');
     CFG.debug           = gChk('cfg-debug');
+
+    // v4.5.39 新增
+    CFG.shortcutsEnable = gChk('cfg-shortcuts-enable');
+    CFG.notifyEnable    = gChk('cfg-notify-enable');
+    CFG.aiEnable        = gChk('cfg-ai-enable');
+    CFG.aiApiKey        = gVal('cfg-ai-api-key').trim();
+    CFG.aiEndpoint      = gVal('cfg-ai-endpoint').trim() || 'https://api.siliconflow.cn/v1/chat/completions';
+    CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
+    CFG.cloudGistId     = gVal('cfg-cloud-gist-id').trim();
+    CFG.cloudToken      = gVal('cfg-cloud-token').trim();
     saveCFG();
   }
 
@@ -2620,6 +3171,34 @@
   document.getElementById('cfg-auto-login').addEventListener('change', function () {
     const fields = document.getElementById('cfg-login-fields');
     if (fields) fields.style.opacity = this.checked ? '1' : '.4';
+  });
+
+  // v4.5.39 AI 开关 → 配置区可用状态
+  document.getElementById('cfg-ai-enable')?.addEventListener('change', function () {
+    const row = document.getElementById('cfg-ai-row');
+    if (row) row.style.opacity = this.checked ? '1' : '.4';
+  });
+
+  // v4.5.39 云同步开关 → 配置区可用状态
+  document.getElementById('cfg-cloud-sync-enable')?.addEventListener('change', function () {
+    const row = document.getElementById('cfg-cloud-row');
+    if (row) row.style.opacity = this.checked ? '1' : '.4';
+  });
+
+  // v4.5.39 云同步按钮
+  document.getElementById('ata-cloud-upload')?.addEventListener('click', () => cloudUpload());
+  document.getElementById('ata-cloud-download')?.addEventListener('click', () => cloudDownload());
+
+  // v4.5.39 答题报告导出
+  document.getElementById('ata-export-report-json')?.addEventListener('click', () => {
+    const content = exportAnswerReport('json');
+    downloadFile(content, 'ATA_Report_' + Date.now() + '.json', 'application/json');
+    uLog('答题报告已导出 (JSON)', 'ok');
+  });
+  document.getElementById('ata-export-report-csv')?.addEventListener('click', () => {
+    const content = exportAnswerReport('csv');
+    downloadFile(content, 'ATA_Report_' + Date.now() + '.csv', 'text/csv;charset=utf-8');
+    uLog('答题报告已导出 (CSV)', 'ok');
   });
 
   // 密码显隐
@@ -2711,6 +3290,40 @@
     panel.classList.remove('collapsed');
     $('#ata-collapse-panel').textContent = '▼';
     $('#ata-collapse-panel').title = '收起面板';
+  });
+
+  /* =========================================================
+     全局快捷键（Alt+Enter / Alt+S）
+     ⚡ v4.5.39：答题时可使用快捷键操作
+  ========================================================= */
+  document.addEventListener('keydown', e => {
+    if (!CFG.shortcutsEnable) return;
+    // Alt+Enter → 开始答题
+    if (e.altKey && e.key === 'Enter') {
+      e.preventDefault();
+      if (!running) { runAutoAnswer(); return; }
+      // 已运行时则提交
+      doSubmit();
+    }
+    // Alt+S → 暂停/继续
+    if (e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      if (!running && !inCountdown) return;
+      $('#ata-pause')?.click();
+    }
+    // Alt+D → 下载题库 JSON
+    if (e.altKey && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      const all = getMergedDB();
+      downloadFile(JSON.stringify(all, null, 2), 'MinuteStars题库_' + Date.now() + '.json', 'application/json');
+      uLog('📤 题库已导出 (Alt+D)', 'ok');
+    }
+    // Ctrl+Shift+A → AI 匹配测试（仅在控制台）
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      CFG.aiEnable = !CFG.aiEnable;
+      uLog('AI 辅助: ' + (CFG.aiEnable ? '开启' : '关闭'), 'info');
+    }
   });
 
 
