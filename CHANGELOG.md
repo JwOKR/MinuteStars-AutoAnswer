@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.55
+
+### 🐛 Bug Fix
+- 修复 `_speedTimes` 未定义错误：将答题速度记录变量提升到外层作用域
+
 ## v4.5.54
 
 ### 🐛 Bug Fix

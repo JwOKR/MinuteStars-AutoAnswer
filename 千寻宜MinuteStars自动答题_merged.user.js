@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.54
+// @version      4.5.55
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
@@ -486,6 +486,11 @@
 "299.市场容量的指标是：支付指数和支付金额父类目占比":"A",
 "300.当搜索热度除以在线商品数得出的倍数，倍数越大时竞争越小，倍数越小时竞争越大。":"A",
   };
+
+  /* =========================================================
+     答题统计（答题速度记录）
+  ========================================================= */
+  let _speedTimes = [];
 
   /* =========================================================
      题库管理器（GM_setValue 持久化，跨会话保存用户自定义题库）
@@ -3375,7 +3380,7 @@
       let libCnt = 0, ruleCnt = 0, aiCnt = 0; // 各匹配方式计数
       const seenQ = new Set();
       // 速度记录
-      let _speedTimes = [];
+      _speedTimes = [];
       let _speedStart = Date.now();
       const speedWrap = document.getElementById('ata-speed-wrap');
       if (speedWrap) speedWrap.style.display = '';
