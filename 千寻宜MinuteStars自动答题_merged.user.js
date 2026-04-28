@@ -58,7 +58,13 @@
 
   /** 持久化保存 CFG */
   function saveCFG() {
-    try { GM_setValue(CFG_KEY, JSON.stringify(CFG)); } catch {}
+    try {
+      GM_setValue(CFG_KEY, JSON.stringify(CFG));
+      uLog('✅ 配置已写入 GM Storage', 'ok');
+    } catch (e) {
+      uLog('❌ 配置保存失败: ' + e.message, 'error');
+      console.error('[ATA Pro] saveCFG error:', e);
+    }
   }
 
   /* =========================================================
@@ -1298,18 +1304,17 @@
       color:var(--nm-text);
     }
     .ata-collapse-body{
+      display:none;
       margin:0 12px 10px;
       background:var(--nm-bg);
       border-radius:0 0 var(--nm-radius-lg) var(--nm-radius-lg);
       padding:0 12px;
-      max-height:0;
-      overflow:hidden;
-      transition:max-height .3s ease, padding .3s ease;
+      transition:padding .3s ease;
       box-shadow: 
         inset 3px 3px 6px var(--nm-shadow-dark),
         inset -3px -3px 6px var(--nm-shadow-light);
     }
-    .ata-collapse-body.open{max-height:600px;padding:12px;}
+    .ata-collapse-body.open{display:block;padding:12px;}
     .ata-section-title{
       font-size:10px;color:var(--nm-text-secondary);
       letter-spacing:.5px;font-weight:600;text-transform:uppercase;
