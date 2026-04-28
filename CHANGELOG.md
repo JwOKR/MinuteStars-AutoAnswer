@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.60
+
+### 🎨 UI 优化
+- 深色模式标题栏：使用 `style.setProperty` + `!important` 强制覆盖 CSS
+
 ## v4.5.59
 
 ### 🎨 UI 优化
