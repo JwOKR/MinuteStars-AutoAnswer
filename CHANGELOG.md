@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.5.38
+- ⚡ strSim 增加公共前缀/后缀裁剪（参考 js-levenshtein），大幅减少 DP 计算量
+- ⚡ cleanMap 缓存 cleanedKey，模糊匹配零重复 cleanText 调用
+- ⚡ DOM 元素缓存（$c），答题循环中统计卡片查询从 O(每题) 降至 O(1)
+- ⚡ renderBrowse 使用 DocumentFragment 批量插入，减少 reflow
+- ⚡ 搜索输入 300ms 防抖，避免每次按键触发全量过滤
+- ⚡ addBulk 增加 5MB 数据量安全检查，防止 GM_setValue 卡死
+
 ## v4.5.37
 - ⚡ 性能：缓存合并题库（getMergedDB），避免每题重复 JSON.parse + 对象展开
 - ⚡ 性能：预清洗所有 key，精确匹配从 O(n) 降至 O(1)

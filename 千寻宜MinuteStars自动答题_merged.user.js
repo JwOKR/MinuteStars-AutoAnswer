@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.37
+// @version      4.5.38
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -516,6 +516,11 @@
           db[q] = a; added++;
         } else skipped++;
       }
+      // ⚡ 安全检查：GM_setValue 大数据会导致 Tampermonkey 卡死
+      const jsonSize = JSON.stringify(db).length;
+      if (jsonSize > 5 * 1024 * 1024) { // 5MB 阈值
+        console.warn('[ATA] 题库数据过大 (' + (jsonSize / 1024 / 1024).toFixed(1) + 'MB)，建议清理');
+      }
       this.save(db);
       _cache.dirty = true;
       return { added, skipped, duplicates };
@@ -543,7 +548,7 @@
     const cleanMap = new Map();
     for (const [k, v] of Object.entries(raw)) {
       const ck = cleanText(k);
-      cleanMap.set(ck, { orig: k, ans: v });
+      cleanMap.set(ck, { orig: k, ans: v, ck });
     }
     _cache.raw = raw;
     _cache.cleanMap = cleanMap;
@@ -572,21 +577,36 @@
       .toLowerCase();
   }
 
-  /** Levenshtein 字符串相似度（0~1）⚡ 一维滚动数组 O(min(a,b)) 内存 */
+  /** Levenshtein 字符串相似度（0~1）
+   *  ⚡ 优化：1) 裁剪公共前缀/后缀  2) 一维滚动数组 O(min(a,b)) 内存
+   *  参考 js-levenshtein (github.com/gustf/js-levenshtein)
+   */
   function strSim(a, b) {
     if (!a || !b) return 0;
     const la = a.length, lb = b.length;
     if (Math.abs(la - lb) / Math.max(la, lb) > 0.45) return 0;
-    // 统一用较短的字符串作为"列"，减少数组长度
-    const [shorter, longer] = la <= lb ? [a, b] : [b, a];
-    const ls = shorter.length, ll = longer.length;
-    // dp[j] = edit distance between shorter[0..i-1] 和 longer[0..j-1]
-    // 只需要 ll+1 长度的数组，从右往左更新即可原地滚动
+
+    // ── 裁剪公共前缀 ──
+    let start = 0;
+    while (start < la && start < lb && a[start] === b[start]) start++;
+    // ── 裁剪公共后缀 ──
+    let endA = la, endB = lb;
+    while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+    // 如果完全相同
+    if (start >= endA && start >= endB) return 1;
+
+    const sa = endA - start, sb = endB - start;
+    if (sa === 0) return 1 - sb / Math.max(la, lb);
+    if (sb === 0) return 1 - sa / Math.max(la, lb);
+
+    // ── 一维滚动 DP（只计算裁剪后的中间段）──
+    const [shorter, longer, ls, ll] = sa <= sb
+      ? [a, b, sa, sb] : [b, a, sb, sa];
     const dp = Array.from({ length: ll + 1 }, (_, j) => j);
     for (let i = 1; i <= ls; i++) {
-      let prev = i; // dp[i-1][0] = i
+      let prev = i;
       for (let j = 1; j <= ll; j++) {
-        const curr = shorter[i - 1] === longer[j - 1]
+        const curr = shorter[start + i - 1] === longer[start + j - 1]
           ? prev
           : 1 + Math.min(prev, dp[j], dp[j - 1]);
         dp[j - 1] = prev;
@@ -594,7 +614,7 @@
       }
       dp[ll] = prev;
     }
-    return 1 - dp[ll] / Math.max(ls, ll);
+    return 1 - dp[ll] / Math.max(la, lb);
   }
 
   /** 精确 + 模糊双重匹配，返回答案字符串或 null
@@ -612,12 +632,11 @@
       return entry.ans;
     }
 
-    // ── 模糊匹配（只遍历 cleanMap.values，避免重复 cleanText）──
+    // ── 模糊匹配（用缓存的 ck，零重复 cleanText）──
     if (!CFG.fuzzyEnable) return null;
     let best = null, bestSim = 0;
-    for (const { orig, ans } of cleanMap.values()) {
-      // cleanMap 的 key 就是已清洗的原始 key，直接用，无需再 cleanText
-      const sim = strSim(nq, orig);   // strSim 内部也做了长度过滤，这里直接传已清洗的 key
+    for (const { ans, ck } of cleanMap.values()) {
+      const sim = strSim(nq, ck);
       if (sim >= CFG.fuzzyThresh && sim > bestSim) { best = ans; bestSim = sim; }
     }
     if (best) CFG.debug && console.log('[Match] 模糊(' + bestSim.toFixed(2) + '):', best);
@@ -665,6 +684,9 @@
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => [...(root || document).querySelectorAll(sel)];
+  // ⚡ DOM 元素缓存（面板创建后一次性查询，避免答题循环中每题重复查询）
+  const _elCache = {};
+  const $c = sel => _elCache[sel] || (_elCache[sel] = document.querySelector(sel));
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -1950,8 +1972,8 @@
 
   function renderBrowse(page) {
     currentPage = page;
-    const keyword = ($('#ata-lib-search') ? $('#ata-lib-search').value : '').toLowerCase();
-    const filter  = ($('#ata-lib-filter') ? $('#ata-lib-filter').value : 'all');
+    const keyword = ($c('#ata-lib-search') ? $c('#ata-lib-search').value : '').toLowerCase();
+    const filter  = ($c('#ata-lib-filter') ? $c('#ata-lib-filter').value : 'all');
     const db      = getMergedDB();
     const entries = Object.entries(db)
       .filter(([q]) => q.toLowerCase().includes(keyword))
@@ -1963,11 +1985,14 @@
     const total   = entries.length;
     const start   = (page - 1) * PAGE_SIZE;
     const slice   = entries.slice(start, start + PAGE_SIZE);
-    const tbody   = $('#ata-lib-tbody');
+    const tbody   = $c('#ata-lib-tbody');
     if (!tbody) return;
-    tbody.innerHTML = '';
+    // ⚡ DocumentFragment 批量插入，减少 reflow
+    const frag = document.createDocumentFragment();
     if (!slice.length) {
-      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#666;padding:20px">没有匹配的题目</td></tr>';
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="3" style="text-align:center;color:#666;padding:20px">没有匹配的题目</td>';
+      frag.appendChild(tr);
     }
     slice.forEach(([q, a]) => {
       const isBuiltin = !!BUILTIN_DB[q];
@@ -1977,15 +2002,19 @@
         + '<td>' + (isBuiltin
           ? '<span style="color:#555;font-size:10px">内置</span>'
           : '<button class="del-btn" data-q="' + escHtml(q) + '">删除</button>') + '</td>';
-      tbody.appendChild(tr);
+      frag.appendChild(tr);
     });
+    tbody.innerHTML = '';
+    tbody.appendChild(frag);
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    $('#ata-pager-info').textContent = '共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页';
-    $('#ata-pager-prev').disabled = page <= 1;
-    $('#ata-pager-next').disabled = start + PAGE_SIZE >= total;
-    $('#ata-pager-jump').max = totalPages;
+    $c('#ata-pager-info').textContent = '共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页';
+    $c('#ata-pager-prev').disabled = page <= 1;
+    $c('#ata-pager-next').disabled = start + PAGE_SIZE >= total;
+    $c('#ata-pager-jump').max = totalPages;
   }
-  $('#ata-lib-search').addEventListener('input', () => renderBrowse(1));
+  // ⚡ 搜索防抖（300ms），避免每次按键都触发全量过滤+渲染
+  let _searchT = null;
+  $('#ata-lib-search').addEventListener('input', () => { clearTimeout(_searchT); _searchT = setTimeout(() => renderBrowse(1), 300); });
   $('#ata-lib-filter').addEventListener('change', () => renderBrowse(1));
   $('#ata-pager-prev').addEventListener('click', () => { if (currentPage > 1) renderBrowse(currentPage - 1); });
   $('#ata-pager-next').addEventListener('click', () => renderBrowse(currentPage + 1));
@@ -2021,7 +2050,7 @@
   }
 
   function setProgress(cur, total) {
-    const bar = $('#ata-bar'), pctEl = $('#ata-prog-pct');
+    const bar = $c('#ata-bar'), pctEl = $c('#ata-prog-pct');
     const pct = total ? Math.round(cur / total * 100) : 0;
     if (bar)   bar.style.width = pct + '%';
     if (pctEl) pctEl.textContent = pct + '%';
@@ -2429,12 +2458,12 @@
           }
         }
 
-        // 实时更新统计卡片（每题都更新）
+        // 实时更新统计卡片（每题都更新，用 $c 缓存避免重复查询）
         const pct = Math.round((i + 1) / containers.length * 100);
         setProgress(i + 1, containers.length);
-        const statAns = $('#ata-stat-answered');
-        const statHit = $('#ata-stat-hit');
-        const statMiss = $('#ata-stat-miss');
+        const statAns = $c('#ata-stat-answered');
+        const statHit = $c('#ata-stat-hit');
+        const statMiss = $c('#ata-stat-miss');
         if (statAns)  statAns.textContent  = i + 1;
         if (statHit)  statHit.textContent   = ok + infer;
         if (statMiss) statMiss.textContent  = skip;
