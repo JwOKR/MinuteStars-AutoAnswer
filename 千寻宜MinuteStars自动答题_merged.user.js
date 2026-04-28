@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.47
+// @version      4.5.48
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
@@ -1011,21 +1011,20 @@
     }
   }
 
-  /** 通用 Gist 请求（优先 fetch + CORS 白名单兜底 GM_xmlhttpRequest） */
+  /** 通用 Gist 请求（优先 fetch + access_token参数规避CORS，兜底 GM_xmlhttpRequest + proxy） */
   async function _gistReq(method, url, body) {
     const token = CFG.cloudToken;
     uLog('📡 Gist 请求: ' + method + ' ' + url + ' (token前缀:' + (token ? token.substring(0,6) + '...' : '空') + ')', 'info');
 
-    // --- 优先：fetch（需域名白名单支持，调试信息全） ---
+    // --- 方案一：fetch + access_token 参数（规避 CORS preflight，自动走系统代理）---
     if (typeof fetch !== 'undefined') {
-      uLog('🔧 尝试 fetch', 'info');
+      const tokenParam = token ? '?access_token=' + token : '';
+      const fetchUrl = url + tokenParam;
+      uLog('🔧 尝试 fetch（access_token参数，自动走系统代理）', 'info');
       try {
-        const resp = await fetch(url, {
+        const resp = await fetch(fetchUrl, {
           method,
-          headers: {
-            'Authorization': 'token ' + token,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: (method !== 'GET' && method !== 'HEAD') ? body : undefined,
         });
         const text = await resp.text();
@@ -1036,14 +1035,15 @@
         throw new Error(msg);
       } catch (e) {
         const isCors = e.message.includes('Failed to fetch') || e.message.includes('NetworkError') || e.message.includes('CORS');
-        uLog('⚠️ fetch' + (isCors ? ' (CORS 拦截，将改用 GM_xmlhttpRequest)' : ' 失败: ' + e.message), 'warn');
-        if (!isCors) throw e; // 非 CORS 错误直接抛出
+        uLog('⚠️ fetch' + (isCors ? ' (失败，将改用 GM_xmlhttpRequest)' : ' 失败: ' + e.message), 'warn');
+        if (!isCors) throw e;
       }
     }
 
-    // --- 兜底：GM_xmlhttpRequest ---
+    // --- 方案二：GM_xmlhttpRequest + proxy ---
     if (typeof GM_xmlhttpRequest !== 'undefined') {
-      uLog('🔧 使用 GM_xmlhttpRequest（兜底）', 'info');
+      const proxyConfig = CFG.cloudProxy ? CFG.cloudProxy.replace(/^https?:\/\//, '') : '';
+      uLog('🔧 使用 GM_xmlhttpRequest + proxy=' + proxyConfig, 'info');
       return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
           method,
@@ -1052,12 +1052,11 @@
             'Authorization': 'token ' + token,
             'Content-Type': 'application/json',
           },
-          proxy: CFG.cloudProxy || undefined,
+          ...(proxyConfig ? { proxy: proxyConfig } : {}),
           onload: x => {
             uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0, 300), 'info');
-            if (x.status >= 200 && x.status < 300) {
-              resolve(x.responseText);
-            } else {
+            if (x.status >= 200 && x.status < 300) resolve(x.responseText);
+            else {
               let msg = 'HTTP ' + x.status;
               try { const j = JSON.parse(x.responseText||'{}'); msg += ' - ' + (j.message||j.error||x.statusText); } catch {}
               reject(new Error(msg));
