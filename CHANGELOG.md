@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.43
+
+### 🐛 Bug 修复
+- 重构 Gist 请求：优先使用原生 `fetch` API（跨域支持更好），`GM_xmlhttpRequest` 作为兜底
+
 ## v4.5.42
 
 ### 🐛 Bug 修复

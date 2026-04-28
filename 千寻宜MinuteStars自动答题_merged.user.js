@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.42
+// @version      4.5.43
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
@@ -1009,54 +1009,84 @@
     }
   }
 
-  /** 通用 Gist 请求（Promise 化 GM_xmlhttpRequest） */
-  function _gistReq(method, url, body) {
-    return new Promise((resolve, reject) => {
-      const token = CFG.cloudToken;
-      const authHeader = 'Bearer ' + token; // GitHub API 推荐 Bearer Token
-      const headers = {
-        'Accept': 'application/json',
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-      };
-      uLog('📡 Gist 请求: ' + method + ' ' + url + ' (token:' + (token ? token.substring(0,6) + '...' : '空') + ')', 'info');
+  /** 通用 Gist 请求（优先 fetch，兜底 GM_xmlhttpRequest） */
+  async function _gistReq(method, url, body) {
+    const token = CFG.cloudToken;
+    uLog('📡 Gist 请求: ' + method + ' ' + url + ' (token前缀:' + (token ? token.substring(0,6) + '...' : '空') + ')', 'info');
 
-      if (typeof GM_xmlhttpRequest !== 'undefined') {
-        GM_xmlhttpRequest({
+    // 优先使用 fetch（跨域支持好）
+    if (typeof fetch !== 'undefined') {
+      try {
+        const opts = {
           method,
-          url,
-          headers,
-          data: body || undefined,
-          onload: x => {
-            uLog('📥 响应状态: ' + x.status + ' | 响应: ' + (x.responseText || '').substring(0, 200), 'info');
-            if (x.status >= 200 && x.status < 300) {
-              resolve(x.responseText);
-            } else {
-              let msg = 'HTTP ' + x.status;
-              try { const j = JSON.parse(x.responseText || '{}'); msg += ' - ' + (j.message || j.error || x.statusText); } catch {}
-              reject(new Error(msg));
-            }
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
-          onerror: () => reject(new Error('网络错误（onerror）')),
-          ontimeout: () => reject(new Error('请求超时（20s）')),
-          onabort: () => reject(new Error('请求被中止')),
-          timeout: 25000,
-        });
-      } else {
-        // Fallback：原生 XMLHttpRequest
-        uLog('⚠️ GM_xmlhttpRequest 不可用，使用原生 XHR', 'warn');
-        const xr = new XMLHttpRequest();
-        xr.open(method, url, true);
-        Object.entries(headers).forEach(([k,v]) => xr.setRequestHeader(k, v));
-        xr.timeout = 25000;
-        xr.onload = () => {
-          if (xr.status >= 200 && xr.status < 300) resolve(xr.responseText);
-          else reject(new Error('HTTP ' + xr.status + ': ' + xr.statusText));
         };
-        xr.onerror = () => reject(new Error('网络错误'));
-        xr.ontimeout = () => reject(new Error('请求超时'));
-        xr.send(body);
+        if (body) opts.body = body;
+        const resp = await fetch(url, opts);
+        const text = await resp.text();
+        uLog('📥 fetch 响应: ' + resp.status + ' | ' + text.substring(0, 200), 'info');
+        if (resp.ok) return text;
+        let msg = 'HTTP ' + resp.status;
+        try { const j = JSON.parse(text); msg += ' - ' + (j.message || j.error || resp.statusText); } catch {}
+        throw new Error(msg);
+      } catch (e) {
+        // fetch 失败，尝试 GM_xmlhttpRequest
+        if (typeof GM_xmlhttpRequest !== 'undefined') {
+          uLog('⚠️ fetch 失败，尝试 GM_xmlhttpRequest', 'warn');
+          return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+              method,
+              url,
+              headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+              data: body || undefined,
+              onload: x => {
+                uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0,200), 'info');
+                if (x.status >= 200 && x.status < 300) resolve(x.responseText);
+                else {
+                  let msg = 'HTTP ' + x.status;
+                  try { const j = JSON.parse(x.responseText||'{}'); msg += ' - ' + (j.message||j.error||x.statusText); } catch {}
+                  reject(new Error(msg));
+                }
+              },
+              onerror: () => reject(new Error('GM_xhr 网络错误')),
+              ontimeout: () => reject(new Error('GM_xhr 超时')),
+              onabort: () => reject(new Error('GM_xhr 请求中止')),
+              timeout: 25000,
+            });
+          });
+        }
+        throw e;
       }
+    }
+
+    // 最后兜底：GM_xmlhttpRequest
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method,
+        url,
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        data: body || undefined,
+        onload: x => {
+          uLog('📥 GM_xhr(fallback) 响应: ' + x.status, 'info');
+          if (x.status >= 200 && x.status < 300) resolve(x.responseText);
+          else reject(new Error('HTTP ' + x.status));
+        },
+        onerror: () => reject(new Error('GM_xhr 网络错误')),
+        ontimeout: () => reject(new Error('GM_xhr 超时')),
+        timeout: 25000,
+      });
     });
   }
 
