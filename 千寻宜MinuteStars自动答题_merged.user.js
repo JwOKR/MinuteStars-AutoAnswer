@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.46
+// @version      4.5.47
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
@@ -48,6 +48,7 @@
     cloudSyncEnable:  false,  // GitHub Gist 云同步
     cloudGistId:      '',     // Gist ID
     cloudToken:       '',     // GitHub Personal Access Token
+    cloudProxy:       'http://127.0.0.1:7897', // 云同步代理地址（国内用户必填）
   };
 
   /** 运行时配置（从 GM storage 恢复） */
@@ -1051,6 +1052,7 @@
             'Authorization': 'token ' + token,
             'Content-Type': 'application/json',
           },
+          proxy: CFG.cloudProxy || undefined,
           onload: x => {
             uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0, 300), 'info');
             if (x.status >= 200 && x.status < 300) {
@@ -1840,6 +1842,10 @@
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">Gist ID</span>
           <input type="text" id="cfg-cloud-gist-id" class="ata-text-input" placeholder="首次上传后自动填充" style="width:100%;box-sizing:border-box">
+        </div>
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="ata-label">代理地址</span>
+          <input type="text" id="cfg-cloud-proxy" class="ata-text-input" placeholder="http://127.0.0.1:7897" style="width:100%;box-sizing:border-box">
         </div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px">⬆ 上传题库</button>
@@ -3156,6 +3162,7 @@
     setChk('cfg-cloud-sync-enable', CFG.cloudSyncEnable);
     setVal('cfg-cloud-gist-id',     CFG.cloudGistId);
     setVal('cfg-cloud-token',       CFG.cloudToken);
+    setVal('cfg-cloud-proxy',       CFG.cloudProxy);
     // 联动显示
     const aiRow = ge('cfg-ai-row');
     if (aiRow) aiRow.style.opacity = CFG.aiEnable ? '1' : '.4';
@@ -3190,6 +3197,7 @@
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
     CFG.cloudGistId     = gVal('cfg-cloud-gist-id').trim();
     CFG.cloudToken      = gVal('cfg-cloud-token').trim();
+    CFG.cloudProxy      = gVal('cfg-cloud-proxy').trim() || 'http://127.0.0.1:7897';
     saveCFG();
   }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.5.47
+
+### 🐛 Bug 修复
+- GM_xmlhttpRequest 新增 `proxy` 参数配置，解决国内直连 GitHub 不稳定的问题
+- 设置面板新增「代理地址」输入框，默认 `http://127.0.0.1:7897`
+
 ## v4.5.46
 
 ### 🐛 Bug 修复
