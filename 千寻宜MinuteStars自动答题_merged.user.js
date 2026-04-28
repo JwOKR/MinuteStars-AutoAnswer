@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.36
+// @version      4.5.37
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + GM持久化 + 模糊匹配(面板可调) + 规则推断 + 答案采集 + Word文档一键导入(.docx) + 面板设置区 + 拖拽移动 + 8方向调整大小（隐藏手柄）
 // @match        https://pcs.minutestars.com/*
@@ -478,12 +478,13 @@
     save(db) {
       try { GM_setValue(DB_KEY, JSON.stringify(db)); } catch {}
     },
-    get count() { return Object.keys(this.load()).length; },
+    get count() { return _cache.dirty ? Object.keys(this.load()).length : _cache.userCount; },
 
     add(question, answer) {
       const db = this.load();
       db[question] = answer;
       this.save(db);
+      _cache.dirty = true;
       return db;
     },
 
@@ -516,6 +517,7 @@
         } else skipped++;
       }
       this.save(db);
+      _cache.dirty = true;
       return { added, skipped, duplicates };
     },
 
@@ -523,17 +525,38 @@
       const db = this.load();
       delete db[question];
       this.save(db);
+      _cache.dirty = true;
     },
 
-    clear() { GM_setValue(DB_KEY, '{}'); },
+    clear() { GM_setValue(DB_KEY, '{}'); _cache.dirty = true; },
 
     exportJSON() { return JSON.stringify(this.load(), null, 2); },
     exportTXT() { return Object.entries(this.load()).map(([q, a]) => q + '||' + a).join('\n'); }
   };
 
-  // 合并题库（内置 + 用户自定义，用户可覆盖内置答案）
+// 合并题库（内置 + 用户自定义，用户可覆盖内置答案）
+  // ⚡ 性能优化：缓存合并结果 + 预清洗 key，精确匹配 O(1)
+  const _cache = { raw: null, cleanMap: null, dirty: true, userCount: -1 };
+  function rebuildCache() {
+    const userDB = LibraryManager.load();
+    const raw = { ...BUILTIN_DB, ...userDB };
+    const cleanMap = new Map();
+    for (const [k, v] of Object.entries(raw)) {
+      const ck = cleanText(k);
+      cleanMap.set(ck, { orig: k, ans: v });
+    }
+    _cache.raw = raw;
+    _cache.cleanMap = cleanMap;
+    _cache.dirty = false;
+    _cache.userCount = Object.keys(userDB).length;
+  }
+  function getMergedCache() {
+    if (_cache.dirty) rebuildCache();
+    return _cache;
+  }
+  // 兼容旧接口（返回原始合并对象，供 refreshStats / export 等使用）
   function getMergedDB() {
-    return { ...BUILTIN_DB, ...LibraryManager.load() };
+    return getMergedCache().raw;
   }
 
   /* =========================================================
@@ -549,35 +572,53 @@
       .toLowerCase();
   }
 
-  /** Levenshtein 字符串相似度（0~1） */
+  /** Levenshtein 字符串相似度（0~1）⚡ 一维滚动数组 O(min(a,b)) 内存 */
   function strSim(a, b) {
     if (!a || !b) return 0;
     const la = a.length, lb = b.length;
     if (Math.abs(la - lb) / Math.max(la, lb) > 0.45) return 0;
-    const dp = Array.from({ length: la + 1 }, (_, i) => [i]);
-    for (let j = 0; j <= lb; j++) dp[0][j] = j;
-    for (let i = 1; i <= la; i++)
-      for (let j = 1; j <= lb; j++)
-        dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1]
-          : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-    return 1 - dp[la][lb] / Math.max(la, lb);
+    // 统一用较短的字符串作为"列"，减少数组长度
+    const [shorter, longer] = la <= lb ? [a, b] : [b, a];
+    const ls = shorter.length, ll = longer.length;
+    // dp[j] = edit distance between shorter[0..i-1] 和 longer[0..j-1]
+    // 只需要 ll+1 长度的数组，从右往左更新即可原地滚动
+    const dp = Array.from({ length: ll + 1 }, (_, j) => j);
+    for (let i = 1; i <= ls; i++) {
+      let prev = i; // dp[i-1][0] = i
+      for (let j = 1; j <= ll; j++) {
+        const curr = shorter[i - 1] === longer[j - 1]
+          ? prev
+          : 1 + Math.min(prev, dp[j], dp[j - 1]);
+        dp[j - 1] = prev;
+        prev = curr;
+      }
+      dp[ll] = prev;
+    }
+    return 1 - dp[ll] / Math.max(ls, ll);
   }
 
-  /** 精确 + 模糊双重匹配，返回答案字符串或 null */
+  /** 精确 + 模糊双重匹配，返回答案字符串或 null
+   *  ⚡ 精确匹配走 Map.get() → O(1)
+   *  ⚡ 模糊匹配只遍历预清洗的 cleanMap，避免重复 cleanText
+   */
   function findMatch(qText) {
-    const db = getMergedDB();
+    const { cleanMap } = getMergedCache();
     const nq = cleanText(qText);
-    for (const [k, v] of Object.entries(db)) {
-      const nk = cleanText(k);
-      if (nk === nq || nk.replace(/[?？]$/, '') === nq.replace(/[?？]$/, '')) {
-        CFG.debug && console.log('[Match] 精确:', k.substring(0,40), '->', v);
-        return v;
-      }
+
+    // ── 精确匹配 O(1) ──
+    let entry = cleanMap.get(nq) || cleanMap.get(nq.replace(/[?？]$/, ''));
+    if (entry) {
+      CFG.debug && console.log('[Match] 精确:', entry.orig.substring(0,40), '->', entry.ans);
+      return entry.ans;
     }
+
+    // ── 模糊匹配（只遍历 cleanMap.values，避免重复 cleanText）──
+    if (!CFG.fuzzyEnable) return null;
     let best = null, bestSim = 0;
-    for (const [k, v] of Object.entries(db)) {
-      const sim = strSim(nq, cleanText(k));
-      if (CFG.fuzzyEnable && sim >= CFG.fuzzyThresh && sim > bestSim) { best = v; bestSim = sim; }
+    for (const { orig, ans } of cleanMap.values()) {
+      // cleanMap 的 key 就是已清洗的原始 key，直接用，无需再 cleanText
+      const sim = strSim(nq, orig);   // strSim 内部也做了长度过滤，这里直接传已清洗的 key
+      if (sim >= CFG.fuzzyThresh && sim > bestSim) { best = ans; bestSim = sim; }
     }
     if (best) CFG.debug && console.log('[Match] 模糊(' + bestSim.toFixed(2) + '):', best);
     return best;

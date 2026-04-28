@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.5.37
+- ⚡ 性能：缓存合并题库（getMergedDB），避免每题重复 JSON.parse + 对象展开
+- ⚡ 性能：预清洗所有 key，精确匹配从 O(n) 降至 O(1)
+- ⚡ 性能：strSim 改为一维滚动数组，内存从 O(a×b) 降至 O(min(a,b))
+- ⚡ 性能：LibraryManager.count getter 惰性缓存，避免重复 JSON.parse
+
 ## v4.5.36
 - 优化：增大两行按钮间距（5px → 12px）
 - 优化：按钮文字大小改为相对单位（em），随按钮同步缩放
