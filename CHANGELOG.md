@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.61
+
+### 🎨 UI 优化
+- 深色模式：在 `prefers-color-scheme: dark` 媒体查询中添加标题栏覆盖样式
+
 ## v4.5.60
 
 ### 🎨 UI 优化

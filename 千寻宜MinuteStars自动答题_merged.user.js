@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.60
+// @version      4.5.61
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
@@ -1100,6 +1100,14 @@
         --nm-text: #b8c4d4;
         --nm-text-secondary: #7a8a9a;
       }
+      /* 标题栏深色模式 */
+      .ata-hdr, #ata-lib-header {
+        background: linear-gradient(145deg, #2a3441, #1e2530) !important;
+        border-bottom-color: rgba(255,255,255,0.05);
+      }
+      .ata-hdr-title { color: #b8c4d4 !important; }
+      .ata-hdr-sub { color: #7a8a9a !important; }
+      .ata-hdr-ver { color: #7a8a9a !important; background: #1e2530 !important; }
     }
     /* 也支持手动检测页面背景色 */
     @media (light-level: dim), (light-level: normal) {
