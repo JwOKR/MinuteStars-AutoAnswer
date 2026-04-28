@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.46
+
+### 🐛 Bug 修复
+- 添加 `@connect api.github.com` 指令，让 Tampermonkey 明确放行 GitHub API 请求
+
 ## v4.5.45
 
 ### 🐛 Bug 修复
