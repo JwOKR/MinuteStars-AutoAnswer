@@ -5,6 +5,7 @@
 ### 🐛 Bug 修复
 - 修复设置区折叠时保存按钮无法点击的问题（`max-height:0` + `overflow:hidden` 导致控件被裁剪，事件无法触发）
 - `saveCFG` 增加错误日志输出，便于排查保存失败问题
+- 修复 GitHub Gist 云同步网络错误：添加缺失的 `@grant GM_xmlhttpRequest` 声明
 
 ## v4.5.39
 
