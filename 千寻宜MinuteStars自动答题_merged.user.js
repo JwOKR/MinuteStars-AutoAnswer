@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.55
+// @version      4.5.56
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
@@ -3384,6 +3384,9 @@
       let _speedStart = Date.now();
       const speedWrap = document.getElementById('ata-speed-wrap');
       if (speedWrap) speedWrap.style.display = '';
+      // 清空答题记录（显示当前试卷全部试题）
+      _recentLogs = [];
+      renderRecentLogs();
 
       for (let i = 0; i < containers.length; i++) {
         if (!running) break;
@@ -3646,8 +3649,7 @@
   /* =========================================================
      实时命中率 & 答题记录
   ========================================================= */
-  let _recentLogs = []; // 最近答题记录（最多10条）
-  const MAX_RECENT = 10;
+  let _recentLogs = []; // 当前试卷全部答题记录
 
   /** 更新命中率显示 */
   function updateHitRate(answered, hit, lib, rule, ai) {
@@ -3661,12 +3663,11 @@
     document.getElementById('ata-stat-ai')?.textContent && (document.getElementById('ata-stat-ai').textContent = ai);
   }
 
-  /** 添加最近答题记录 */
+  /** 添加答题记录 */
   function addRecentLog(question, answer, method) {
-    const q = question.length > 40 ? question.substring(0, 40) + '…' : question;
+    const q = question.length > 60 ? question.substring(0, 60) + '…' : question;
     const a = Array.isArray(answer) ? answer.join('') : String(answer || '—');
-    _recentLogs.unshift({ q, a, method });
-    if (_recentLogs.length > MAX_RECENT) _recentLogs.pop();
+    _recentLogs.push({ q, a, method });
     renderRecentLogs();
   }
 
