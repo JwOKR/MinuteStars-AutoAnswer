@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.50
+
+### 🆕 新增域名支持
+- 自动登录和答题功能扩展支持以下域名：erp.minutestars.com / marketoperation.minutestars.com / multimedia.minutestars.com / zhibo.minutestars.com
+
 ## v4.5.49
 
 ### 🆕 新功能
