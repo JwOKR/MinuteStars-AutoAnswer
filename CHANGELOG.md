@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.54
+
+### 🐛 Bug Fix
+- 修复变量重复声明错误：`settingsBody` 被声明两次
+
 ## v4.5.53
 
 ### 🐛 Bug Fix
