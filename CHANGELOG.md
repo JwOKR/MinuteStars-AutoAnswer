@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.41
+
+### 🐛 Bug 修复
+- 修复 GitHub Gist 上传 404 错误：添加 Gist ID 有效性验证，无效时自动清空重新创建新 Gist
+
 ## v4.5.40
 
 ### 🐛 Bug 修复

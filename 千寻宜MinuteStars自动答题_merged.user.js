@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.40
+// @version      4.5.41
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
@@ -927,6 +927,17 @@
   }
   function gistUrl(id) { return 'https://api.github.com/gists/' + (id || ''); }
 
+  /** 验证 Gist ID 是否有效 */
+  async function _validateGistId(gistId) {
+    if (!gistId) return false;
+    try {
+      await _gistReq('GET', gistUrl(gistId), null);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** 上传题库到 Gist */
   async function cloudUpload() {
     if (!CFG.cloudSyncEnable || !CFG.cloudToken) {
@@ -934,6 +945,17 @@
     }
     uLog('⬆️ 正在上传题库…', 'info');
     try {
+      // 验证 Gist ID 是否有效，无效则清空重新创建
+      let isUpdate = false;
+      if (CFG.cloudGistId) {
+        uLog('🔍 验证 Gist ID…', 'info');
+        isUpdate = await _validateGistId(CFG.cloudGistId);
+        if (!isUpdate) {
+          uLog('⚠️ Gist ID 无效，将创建新 Gist', 'warn');
+          CFG.cloudGistId = '';
+          saveCFG();
+        }
+      }
       const userDB = LibraryManager.load();
       const body = JSON.stringify({
         description: 'MinuteStars 答题器题库备份 ' + new Date().toLocaleString(),
@@ -942,7 +964,7 @@
           'minutestars_qa.json': { content: JSON.stringify(userDB, null, 2) },
         },
       });
-      const resp = await _gistReq(CFG.cloudGistId ? 'PATCH' : 'POST', gistUrl(CFG.cloudGistId), body);
+      const resp = await _gistReq(isUpdate ? 'PATCH' : 'POST', gistUrl(CFG.cloudGistId), body);
       const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
       const gistId = data.id;
       if (!CFG.cloudGistId) {
