@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.5.45
+
+### 🐛 Bug 修复
+- 调整 `_gistReq` 请求优先级：fetch 优先、CORS 拦截时自动降级到 GM_xmlhttpRequest
+- 改进 CORS 错误检测与自动切换逻辑
+
 ## v4.5.44
 
 ### 🐛 Bug 修复
