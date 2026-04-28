@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.58
+// @version      4.5.59
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
@@ -4139,14 +4139,24 @@
   ========================================================= */
   function detectDarkMode() {
     try {
-      const bg = window.getComputedStyle(document.body).backgroundColor;
+      // 检测页面根元素背景色
+      const root = document.documentElement;
+      const rootBg = window.getComputedStyle(root).backgroundColor;
+      const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+      const bg = rootBg !== 'rgba(0, 0, 0, 0)' ? rootBg : bodyBg;
+
       const rgb = bg.match(/\d+/g);
       if (rgb && rgb.length >= 3) {
         const brightness = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000;
-        if (brightness < 128) {
-          panel.classList.add('ata-dark');
-        } else {
-          panel.classList.remove('ata-dark');
+        const isDark = brightness < 128;
+        panel.classList.toggle('ata-dark', isDark);
+
+        // 直接设置标题栏背景色
+        const hdr = document.querySelector('.ata-hdr');
+        if (hdr) {
+          hdr.style.background = isDark
+            ? 'linear-gradient(145deg, #2a3441, #1e2530)'
+            : 'linear-gradient(145deg, #d4d9e2, #ebeff5)';
         }
       }
     } catch {}
@@ -4155,6 +4165,7 @@
   // 监听主题变化
   const observer = new MutationObserver(detectDarkMode);
   observer.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
 
   // 深色模式 CSS 变量覆盖
   GM_addStyle(`
