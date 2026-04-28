@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.48
+// @version      4.5.49
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
@@ -45,10 +45,11 @@
     aiEnable:         false,  // AI 辅助匹配（题库无命中时的语义兜底）
     aiApiKey:         '',     // DeepSeek / 硅基流动 API Key
     aiEndpoint:       'https://api.siliconflow.cn/v1/chat/completions', // 默认用硅基流动（免费额度）
-    cloudSyncEnable:  false,  // GitHub Gist 云同步
+    cloudSyncEnable:  false,  // 云同步开关
+    cloudPlatform:   'gitee', // 云平台：gitee（默认）/ github
     cloudGistId:      '',     // Gist ID
-    cloudToken:       '',     // GitHub Personal Access Token
-    cloudProxy:       'http://127.0.0.1:7897', // 云同步代理地址（国内用户必填）
+    cloudToken:       '',     // Personal Access Token
+    cloudProxy:       '',     // 代理地址（GitHub 用，如 http://127.0.0.1:7897）
   };
 
   /** 运行时配置（从 GM storage 恢复） */
@@ -921,13 +922,28 @@
      ⚡ v4.5.39：题库上传下载到 GitHub Gist
   ========================================================= */
   function gistHeaders() {
-    return {
-      'Accept': 'application/vnd.github.v3+json',
-      'Authorization': 'token ' + CFG.cloudToken,
-      'Content-Type': 'application/json',
-    };
+    return { 'Content-Type': 'application/json' };
   }
-  function gistUrl(id) { return 'https://api.github.com/gists/' + (id || ''); }
+  function gistUrl(id) {
+    const base = CFG.cloudPlatform === 'github'
+      ? 'https://api.github.com/gists'
+      : 'https://gitee.com/api/v5/gists';
+    const token = CFG.cloudToken;
+    const param = token ? '?access_token=' + token : '';
+    return base + '/' + (id || '') + param;
+  }
+  function gistBody(method, id, payload) {
+    const token = CFG.cloudToken;
+    if (CFG.cloudPlatform === 'github') {
+      // GitHub: Authorization header
+      return { url: gistUrl(id), headers: { ...gistHeaders(), 'Authorization': 'token ' + token }, body: payload, method };
+    } else {
+      // Gitee: access_token in body
+      const bodyObj = payload ? JSON.parse(payload) : {};
+      bodyObj.access_token = token;
+      return { url: gistUrl(id).split('?')[0] + '?access_token=' + token, headers: gistHeaders(), body: JSON.stringify(bodyObj), method };
+    }
+  }
 
   /** 验证 Gist ID 是否有效 */
   async function _validateGistId(gistId) {
@@ -947,7 +963,6 @@
     }
     uLog('⬆️ 正在上传题库…', 'info');
     try {
-      // 验证 Gist ID 是否有效，无效则清空重新创建
       let isUpdate = false;
       if (CFG.cloudGistId) {
         uLog('🔍 验证 Gist ID…', 'info');
@@ -959,14 +974,15 @@
         }
       }
       const userDB = LibraryManager.load();
-      const body = JSON.stringify({
+      const method = isUpdate ? 'PATCH' : 'POST';
+      const req = gistBody(method, CFG.cloudGistId, JSON.stringify({
         description: 'MinuteStars 答题器题库备份 ' + new Date().toLocaleString(),
         public: false,
         files: {
           'minutestars_qa.json': { content: JSON.stringify(userDB, null, 2) },
         },
-      });
-      const resp = await _gistReq(isUpdate ? 'PATCH' : 'POST', gistUrl(CFG.cloudGistId), body);
+      }));
+      const resp = await _gistReq(req.method, req.url, req.body, req.headers);
       const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
       const gistId = data.id;
       if (!CFG.cloudGistId) {
@@ -991,7 +1007,8 @@
     }
     uLog('⬇️ 正在下载题库…', 'info');
     try {
-      const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
+      const req = gistBody('GET', CFG.cloudGistId, null);
+      const resp = await _gistReq(req.method, req.url, req.body, req.headers);
       const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
       const file = data.files?.['minutestars_qa.json'];
       if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
@@ -1011,48 +1028,42 @@
     }
   }
 
-  /** 通用 Gist 请求（优先 fetch + access_token参数规避CORS，兜底 GM_xmlhttpRequest + proxy） */
-  async function _gistReq(method, url, body) {
-    const token = CFG.cloudToken;
-    uLog('📡 Gist 请求: ' + method + ' ' + url + ' (token前缀:' + (token ? token.substring(0,6) + '...' : '空') + ')', 'info');
+  /** 通用 Gist 请求 */
+  async function _gistReq(method, url, body, headers) {
+    headers = headers || { 'Content-Type': 'application/json' };
+    uLog('📡 Gist 请求: ' + method + ' ' + url, 'info');
 
-    // --- 方案一：fetch + access_token 参数（规避 CORS preflight，自动走系统代理）---
+    // --- fetch（自动走系统代理，无需额外配置）---
     if (typeof fetch !== 'undefined') {
-      const tokenParam = token ? '?access_token=' + token : '';
-      const fetchUrl = url + tokenParam;
-      uLog('🔧 尝试 fetch（access_token参数，自动走系统代理）', 'info');
+      uLog('🔧 使用 fetch（系统代理）', 'info');
       try {
-        const resp = await fetch(fetchUrl, {
+        const resp = await fetch(url, {
           method,
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: (method !== 'GET' && method !== 'HEAD') ? body : undefined,
         });
         const text = await resp.text();
         uLog('📥 fetch 响应: ' + resp.status + ' | ' + text.substring(0, 300), 'info');
         if (resp.ok) return text;
         let msg = 'HTTP ' + resp.status;
-        try { const j = JSON.parse(text); msg += ' - ' + (j.message || j.error || resp.statusText); } catch {}
+        try { const j = JSON.parse(text); msg += ' - ' + (j.message || j.error || resp.statusText || resp.status); } catch {}
         throw new Error(msg);
       } catch (e) {
         const isCors = e.message.includes('Failed to fetch') || e.message.includes('NetworkError') || e.message.includes('CORS');
-        uLog('⚠️ fetch' + (isCors ? ' (失败，将改用 GM_xmlhttpRequest)' : ' 失败: ' + e.message), 'warn');
+        uLog('⚠️ fetch' + (isCors ? ' (CORS 失败)' : ' 失败: ' + e.message), 'warn');
         if (!isCors) throw e;
       }
     }
 
-    // --- 方案二：GM_xmlhttpRequest + proxy ---
+    // --- GM_xmlhttpRequest + proxy ---
     if (typeof GM_xmlhttpRequest !== 'undefined') {
       const proxyConfig = CFG.cloudProxy ? CFG.cloudProxy.replace(/^https?:\/\//, '') : '';
-      uLog('🔧 使用 GM_xmlhttpRequest + proxy=' + proxyConfig, 'info');
+      uLog('🔧 使用 GM_xmlhttpRequest' + (proxyConfig ? ' + proxy=' + proxyConfig : ''), 'info');
       return new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({
+        const opts = {
           method,
           url,
-          headers: {
-            'Authorization': 'token ' + token,
-            'Content-Type': 'application/json',
-          },
-          ...(proxyConfig ? { proxy: proxyConfig } : {}),
+          headers,
           onload: x => {
             uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0, 300), 'info');
             if (x.status >= 200 && x.status < 300) resolve(x.responseText);
@@ -1066,8 +1077,10 @@
           ontimeout: () => { uLog('❌ GM_xhr timeout', 'err'); reject(new Error('GM_xhr 超时')); },
           onabort: () => reject(new Error('GM_xhr 请求中止')),
           timeout: 30000,
-          data: (body !== null && body !== undefined) ? body : undefined,
-        });
+        };
+        if (proxyConfig) opts.proxy = proxyConfig;
+        if (body) opts.data = body;
+        GM_xmlhttpRequest(opts);
       });
     }
 
@@ -1828,29 +1841,37 @@
         <div style="font-size:10px;color:#888;margin-top:4px">💡 推荐使用 <b>硅基流动</b>（免费额度），或自备 DeepSeek Key</div>
       </div>
 
-      <div class="ata-section-title">云同步 <span style="font-size:10px;color:#aaa">(GitHub Gist)</span></div>
+      <div class="ata-section-title">云同步</div>
       <div class="ata-row">
         <span class="ata-label">启用云同步</span>
         <label class="ata-toggle"><input type="checkbox" id="cfg-cloud-sync-enable"><span class="ata-slider"></span></label>
       </div>
       <div id="cfg-cloud-row" style="opacity:.4">
+        <div class="ata-row">
+          <span class="ata-label">云平台</span>
+          <div style="display:flex;gap:6px">
+            <label style="font-size:11px;cursor:pointer"><input type="radio" name="cfg-cloud-platform" value="gitee"> Gitee（国内推荐）</label>
+            <label style="font-size:11px;cursor:pointer"><input type="radio" name="cfg-cloud-platform" value="github"> GitHub</label>
+          </div>
+        </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-          <span class="ata-label">GitHub Token</span>
-          <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="ghp_..." style="width:100%;box-sizing:border-box">
+          <span class="ata-label">Token</span>
+          <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="私人令牌" style="width:100%;box-sizing:border-box">
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">Gist ID</span>
           <input type="text" id="cfg-cloud-gist-id" class="ata-text-input" placeholder="首次上传后自动填充" style="width:100%;box-sizing:border-box">
         </div>
-        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-          <span class="ata-label">代理地址</span>
+        <div id="cfg-cloud-proxy-row" class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px;display:none">
+          <span class="ata-label">代理地址（GitHub 专用）</span>
           <input type="text" id="cfg-cloud-proxy" class="ata-text-input" placeholder="http://127.0.0.1:7897" style="width:100%;box-sizing:border-box">
         </div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px">⬆ 上传题库</button>
           <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px">⬇ 下载题库</button>
         </div>
-        <div style="font-size:10px;color:#888;margin-top:4px">💡 需要 GitHub 账号 → Settings → Developer settings → Personal access tokens → Generate new token (scope: gist)</div>
+        <div id="cfg-cloud-hint-gitee" style="font-size:10px;color:#888;margin-top:4px">💡 需要 Gitee 账号 → 个人设置 → 私人令牌 → 生成令牌（勾选 gists）</div>
+        <div id="cfg-cloud-hint-github" style="font-size:10px;color:#888;margin-top:4px;display:none">💡 GitHub → Settings → Developer settings → Personal access tokens → Generate new token (scope: gist)</div>
       </div>
 
       <div class="ata-section-title">答题报告</div>
@@ -3162,11 +3183,15 @@
     setVal('cfg-cloud-gist-id',     CFG.cloudGistId);
     setVal('cfg-cloud-token',       CFG.cloudToken);
     setVal('cfg-cloud-proxy',       CFG.cloudProxy);
+    // 平台单选
+    const radios = document.getElementsByName('cfg-cloud-platform');
+    for (const r of radios) { if (r.value === CFG.cloudPlatform) { r.checked = true; break; } }
     // 联动显示
     const aiRow = ge('cfg-ai-row');
     if (aiRow) aiRow.style.opacity = CFG.aiEnable ? '1' : '.4';
     const cloudRow = ge('cfg-cloud-row');
     if (cloudRow) cloudRow.style.opacity = CFG.cloudSyncEnable ? '1' : '.4';
+    _updateCloudPlatformUI();
   }
 
   /** 从面板控件读取当前值写入 CFG 并持久化 */
@@ -3194,10 +3219,26 @@
     CFG.aiApiKey        = gVal('cfg-ai-api-key').trim();
     CFG.aiEndpoint      = gVal('cfg-ai-endpoint').trim() || 'https://api.siliconflow.cn/v1/chat/completions';
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
+    const platformRadios = document.getElementsByName('cfg-cloud-platform');
+    for (const r of platformRadios) { if (r.checked) { CFG.cloudPlatform = r.value; break; } }
     CFG.cloudGistId     = gVal('cfg-cloud-gist-id').trim();
     CFG.cloudToken      = gVal('cfg-cloud-token').trim();
-    CFG.cloudProxy      = gVal('cfg-cloud-proxy').trim() || 'http://127.0.0.1:7897';
+    CFG.cloudProxy      = gVal('cfg-cloud-proxy').trim();
     saveCFG();
+  }
+
+  /** 根据平台切换 UI 显示 */
+  function _updateCloudPlatformUI() {
+    const isGitee = CFG.cloudPlatform !== 'github';
+    const proxyRow = document.getElementById('cfg-cloud-proxy-row');
+    const hintGitee = document.getElementById('cfg-cloud-hint-gitee');
+    const hintGithub = document.getElementById('cfg-cloud-hint-github');
+    if (proxyRow) proxyRow.style.display = isGitee ? 'none' : 'flex';
+    if (hintGitee) hintGitee.style.display = isGitee ? 'block' : 'none';
+    if (hintGithub) hintGithub.style.display = isGitee ? 'none' : 'block';
+    // token 占位符
+    const tokenInput = document.getElementById('cfg-cloud-token');
+    if (tokenInput) tokenInput.placeholder = isGitee ? 'Gitee 私人令牌' : 'GitHub Personal Access Token';
   }
 
   // 折叠展开
@@ -3208,6 +3249,14 @@
     const open = settingsBody.classList.toggle('open');
     settingsArrow.textContent = open ? '▲' : '▼';
     if (open) syncSettingsUI();
+  });
+
+  // 平台切换时即时更新 UI
+  document.getElementsByName('cfg-cloud-platform').forEach(r => {
+    r.addEventListener('change', () => {
+      CFG.cloudPlatform = document.querySelector('input[name="cfg-cloud-platform"]:checked')?.value || 'gitee';
+      _updateCloudPlatformUI();
+    });
   });
 
   // 模糊匹配开关

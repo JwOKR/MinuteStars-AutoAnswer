@@ -1,11 +1,15 @@
 # Changelog
 
-## v4.5.48
+## v4.5.49
+
+### 🆕 新功能
+- 新增 Gitee Gist 云同步支持（国内用户首选，无需代理）
+- 设置面板新增「云平台」切换（Gitee / GitHub）
+- GitHub 模式下仅在选择时才显示代理地址字段
 
 ### 🐛 Bug 修复
-- fetch 改用 `access_token` URL 参数认证（规避 CORS preflight，自动走系统代理）
-- 移除 Authorization Header 避免触发跨域 preflight 请求
-- 简化 proxy 参数格式（去掉 `http://` 前缀）
+- 重构 `_gistReq` 支持自定义 headers
+- 重构 `gistBody` 统一处理两个平台的 API 差异
 
 ## v4.5.46
 
