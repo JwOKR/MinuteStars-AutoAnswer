@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.41
+// @version      4.5.42
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + GitHub Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小
 // @match        https://pcs.minutestars.com/*
@@ -1012,35 +1012,51 @@
   /** 通用 Gist 请求（Promise 化 GM_xmlhttpRequest） */
   function _gistReq(method, url, body) {
     return new Promise((resolve, reject) => {
-      try {
-        const xhr = typeof GM_xmlhttpRequest !== 'undefined'
-          ? GM_xmlhttpRequest
-          : XMLHttpRequest;
-        const opts = {
+      const token = CFG.cloudToken;
+      const authHeader = 'Bearer ' + token; // GitHub API 推荐 Bearer Token
+      const headers = {
+        'Accept': 'application/json',
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      };
+      uLog('📡 Gist 请求: ' + method + ' ' + url + ' (token:' + (token ? token.substring(0,6) + '...' : '空') + ')', 'info');
+
+      if (typeof GM_xmlhttpRequest !== 'undefined') {
+        GM_xmlhttpRequest({
           method,
           url,
-          headers: { 'Accept': 'application/json', 'Authorization': 'token ' + CFG.cloudToken, 'Content-Type': 'application/json' },
-          onload: x => { if (x.status >= 200 && x.status < 300) resolve(x.responseText); else reject(new Error('HTTP ' + x.status + ': ' + (JSON.parse(x.responseText||'{}').message || x.statusText))); },
-          onerror: e => reject(new Error('网络错误')),
-          ontimeout: () => reject(new Error('请求超时')),
-          timeout: 20000,
+          headers,
+          data: body || undefined,
+          onload: x => {
+            uLog('📥 响应状态: ' + x.status + ' | 响应: ' + (x.responseText || '').substring(0, 200), 'info');
+            if (x.status >= 200 && x.status < 300) {
+              resolve(x.responseText);
+            } else {
+              let msg = 'HTTP ' + x.status;
+              try { const j = JSON.parse(x.responseText || '{}'); msg += ' - ' + (j.message || j.error || x.statusText); } catch {}
+              reject(new Error(msg));
+            }
+          },
+          onerror: () => reject(new Error('网络错误（onerror）')),
+          ontimeout: () => reject(new Error('请求超时（20s）')),
+          onabort: () => reject(new Error('请求被中止')),
+          timeout: 25000,
+        });
+      } else {
+        // Fallback：原生 XMLHttpRequest
+        uLog('⚠️ GM_xmlhttpRequest 不可用，使用原生 XHR', 'warn');
+        const xr = new XMLHttpRequest();
+        xr.open(method, url, true);
+        Object.entries(headers).forEach(([k,v]) => xr.setRequestHeader(k, v));
+        xr.timeout = 25000;
+        xr.onload = () => {
+          if (xr.status >= 200 && xr.status < 300) resolve(xr.responseText);
+          else reject(new Error('HTTP ' + xr.status + ': ' + xr.statusText));
         };
-        if (body) opts.data = body;
-        if (typeof GM_xmlhttpRequest !== 'undefined') {
-          GM_xmlhttpRequest(opts);
-        } else {
-          const xr = new XMLHttpRequest();
-          xr.open(method, url, true);
-          xr.setRequestHeader('Content-Type', 'application/json');
-          xr.setRequestHeader('Authorization', 'token ' + CFG.cloudToken);
-          xr.setRequestHeader('Accept', 'application/json');
-          xr.timeout = 20000;
-          xr.onload = () => { if (xr.status >= 200 && xr.status < 300) resolve(xr.responseText); else reject(new Error('HTTP ' + xr.status)); };
-          xr.onerror = () => reject(new Error('网络错误'));
-          xr.ontimeout = () => reject(new Error('超时'));
-          xr.send(body);
-        }
-      } catch(e) { reject(e); }
+        xr.onerror = () => reject(new Error('网络错误'));
+        xr.ontimeout = () => reject(new Error('请求超时'));
+        xr.send(body);
+      }
     });
   }
 

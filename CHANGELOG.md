@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.5.42
+
+### 🐛 Bug 修复
+- 增强 Gist 请求错误日志：详细输出 HTTP 状态码、响应体前200字符、Token 前6位
+- 修正 Authorization Header 为标准 `Bearer Token` 格式
+
 ## v4.5.41
 
 ### 🐛 Bug 修复
