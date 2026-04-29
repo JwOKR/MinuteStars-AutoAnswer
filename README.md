@@ -19,6 +19,6 @@ Tampermonkey 自动答题脚本，支持 MinuteStars 在线答题平台。
 
 ## 版本
 
-当前版本：**v4.5.62**
+当前版本：**v4.5.63**
 
 详见 [CHANGELOG](./CHANGELOG.md)。
