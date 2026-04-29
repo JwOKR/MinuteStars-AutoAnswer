@@ -561,7 +561,7 @@
       _cache.dirtyKeys?.add(question);
     },
 
-    clear() { GM_setValue(DB_KEY, '{}'); _cache.dirty = true; },
+    clear() { GM_setValue(DB_KEY, '{}'); _cache.dirty = true; _cache.dirtyKeys = null; },
 
     exportJSON() { return JSON.stringify(this.load(), null, 2); },
     exportTXT() { return Object.entries(this.load()).map(([q, a]) => q + '||' + a).join('\n'); }
