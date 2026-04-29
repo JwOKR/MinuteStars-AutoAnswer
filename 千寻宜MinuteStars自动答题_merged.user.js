@@ -599,7 +599,7 @@
     const raw = { ...BUILTIN_DB, ...userDB };
 
     // 增量更新：若有 dirtyKeys 且缓存已存在，则只更新变更部分
-    if (_cache.cleanMap && _cache.dirtyKeys.size > 0 && _cache.dirtyKeys.size < 50) {
+    if (_cache.cleanMap && _cache.dirtyKeys?.size > 0 && _cache.dirtyKeys?.size < 50) {
       for (const k of _cache.dirtyKeys) {
         const ck = cleanText(k);
         const v = raw[k];
