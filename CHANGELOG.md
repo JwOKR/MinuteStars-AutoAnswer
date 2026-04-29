@@ -1,5 +1,21 @@
 # Changelog
 
+## v4.5.62
+
+### 🐛 Bug 修复（6项）
+- **CSS语法修复**：`.ata-presets-row`/`.ata-presets-hint` 错误嵌套在 `.ata-collapse-body` 内部，已提取为独立规则
+- **事件重复绑定**：删除 `#ata-clear-lib/yes/no` 第一组重复绑定，保留带空值检查的 `$c()` 版本
+- **Canvas CSS变量**：`fillStyle` 不支持 `var(--nm-text)`，改为具体颜色 `#5a6a7a`
+- **_speedTimes内存膨胀**：超过200条后 `slice(-200)` 截断
+- **runAutoAnswer状态清理**：用 `finally` 块统一清理，排除 autoSubmit 倒计时场景
+- **cleanText正则**：改用 Unicode 属性 `\p{P}\p{S}` 替代手动列举标点
+
+### ⚡ 性能优化（4项）
+- **cleanText缓存**：加 `_cleanTextCache` Map，相同文本直接返回缓存，上限2000条
+- **rebuildCache增量更新**：新增 `dirtyKeys` 集合追踪变更，<50条时只更新变更部分
+- **findQContainers DOM缓存**：首次查询后缓存，后续调用检查 `isConnected` 直接返回
+- **aiMatch错误处理**：区分 401 Key无效、429频率限制、超时、网络失败等具体错误
+
 ## v4.5.61
 
 ### 🎨 UI 优化

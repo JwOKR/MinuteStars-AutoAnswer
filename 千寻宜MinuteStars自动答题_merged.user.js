@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.61
+// @version      4.5.62
 // @author       JIA
 // @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
@@ -549,6 +549,7 @@
       }
       this.save(db);
       _cache.dirty = true;
+      Object.keys(db).slice(-added).forEach(k => _cache.dirtyKeys?.add(k));
       return { added, skipped, duplicates };
     },
 
@@ -557,6 +558,7 @@
       delete db[question];
       this.save(db);
       _cache.dirty = true;
+      _cache.dirtyKeys?.add(question);
     },
 
     clear() { GM_setValue(DB_KEY, '{}'); _cache.dirty = true; },
@@ -573,6 +575,7 @@
     raw: null, cleanMap: null, dirty: true, userCount: -1,
     ngramIndex: null,  // Map<2gram字符串, Set<cleanKey>>
     lenBuckets: null,  // Map<长度桶, [{ck, orig, ans}]>
+    dirtyKeys: new Set(), // 增量更新追踪
   };
 
   /** 将字符串切分为 2-gram 集合（中文按字符，英文按单词） */
@@ -594,21 +597,56 @@
   function rebuildCache() {
     const userDB = LibraryManager.load();
     const raw = { ...BUILTIN_DB, ...userDB };
+
+    // 增量更新：若有 dirtyKeys 且缓存已存在，则只更新变更部分
+    if (_cache.cleanMap && _cache.dirtyKeys.size > 0 && _cache.dirtyKeys.size < 50) {
+      for (const k of _cache.dirtyKeys) {
+        const ck = cleanText(k);
+        const v = raw[k];
+        // 从旧索引中移除
+        if (_cache.cleanMap.has(ck)) {
+          for (const ng of _ngrams(ck, 2)) {
+            _cache.ngramIndex.get(ng)?.delete(ck);
+          }
+          const bucket = _lenBucket(ck.length);
+          const bucketArr = _cache.lenBuckets.get(bucket);
+          if (bucketArr) {
+            const idx = bucketArr.findIndex(e => e.ck === ck);
+            if (idx !== -1) bucketArr.splice(idx, 1);
+          }
+          _cache.cleanMap.delete(ck);
+        }
+        // 新增/更新
+        if (v !== undefined) {
+          _cache.cleanMap.set(ck, { orig: k, ans: v, ck });
+          for (const ng of _ngrams(ck, 2)) {
+            if (!_cache.ngramIndex.has(ng)) _cache.ngramIndex.set(ng, new Set());
+            _cache.ngramIndex.get(ng).add(ck);
+          }
+          const bucket = _lenBucket(ck.length);
+          if (!_cache.lenBuckets.has(bucket)) _cache.lenBuckets.set(bucket, []);
+          _cache.lenBuckets.get(bucket).push({ ck, orig: k, ans: v });
+        }
+      }
+      _cache.raw = raw;
+      _cache.dirtyKeys.clear();
+      _cache.dirty = false;
+      _cache.userCount = Object.keys(userDB).length;
+      return;
+    }
+
+    // 全量重建
     const cleanMap = new Map();
-    const ngramIndex = new Map();   // 2-gram → Set of ck
-    const lenBuckets = new Map();   // lenBucket → [{ck, orig, ans}]
+    const ngramIndex = new Map();
+    const lenBuckets = new Map();
 
     for (const [k, v] of Object.entries(raw)) {
       const ck = cleanText(k);
       cleanMap.set(ck, { orig: k, ans: v, ck });
-
-      // ── N-gram 索引 ──
       for (const ng of _ngrams(ck, 2)) {
         if (!ngramIndex.has(ng)) ngramIndex.set(ng, new Set());
         ngramIndex.get(ng).add(ck);
       }
-
-      // ── 长度桶索引 ──
       const bucket = _lenBucket(ck.length);
       if (!lenBuckets.has(bucket)) lenBuckets.set(bucket, []);
       lenBuckets.get(bucket).push({ ck, orig: k, ans: v });
@@ -619,6 +657,7 @@
     _cache.ngramIndex = ngramIndex;
     _cache.lenBuckets = lenBuckets;
     _cache.dirty = false;
+    _cache.dirtyKeys.clear();
     _cache.userCount = Object.keys(userDB).length;
   }
   function getMergedCache() {
@@ -633,14 +672,19 @@
   /* =========================================================
      文本归一化 & 匹配
   ========================================================= */
+  const _cleanTextCache = new Map();
   function cleanText(text) {
     if (!text) return '';
-    return text.trim()
+    if (_cleanTextCache.has(text)) return _cleanTextCache.get(text);
+    const result = text.trim()
       .replace(/^\d+[\.\、．]\s*/, '')
       .replace(/\(\d+分?\)/g, '')
       .replace(/\s+/g, '')
-      .replace(/[：:;,，。！!？?（）()""''""''【】\[\]{}《》〈〉—\-－_+=·、．\/\\|~`@#$%^&*]+/g, '')
+      .replace(/[\p{P}\p{S}]+/gu, '')
       .toLowerCase();
+    if (_cleanTextCache.size >= 2000) _cleanTextCache.delete(_cleanTextCache.keys().next().value);
+    _cleanTextCache.set(text, result);
+    return result;
   }
 
   /** Jaro-Winkler 相似度（0~1）
@@ -917,9 +961,20 @@
           CFG.debug && console.log('[AI Match]', qText.substring(0,30), '->', match[0]);
           return match[0].toUpperCase();
         }
+      } else if (resp.status === 401) {
+        uLog('🤖 AI Key 无效（401），请检查 API Key', 'err');
+      } else if (resp.status === 429) {
+        uLog('🤖 AI 请求频率限制（429），稍后重试', 'warn');
+      } else {
+        CFG.debug && console.warn('[AI Match] HTTP ' + resp.status + ':', resp.responseText?.substring(0,100));
       }
     } catch (e) {
-      CFG.debug && console.warn('[AI Match] 失败:', e.message);
+      if (e?.message?.includes('timeout') || e?.message?.includes('time')) {
+        uLog('🤖 AI 请求超时（15s），跳过', 'warn');
+      } else {
+        uLog('🤖 AI 请求失败: ' + (e?.message || '网络错误'), 'warn');
+      }
+      CFG.debug && console.warn('[AI Match] 失败:', e?.message);
     }
     return null;
   }
@@ -1433,15 +1488,15 @@
       margin:0 12px 10px;
       background:var(--nm-bg);
       border-radius:0 0 var(--nm-radius-lg) var(--nm-radius-lg);
-    /* 策略预设 */
-    .ata-presets-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap}
-    .ata-presets-hint{min-height:14px}
       padding:0 12px;
       transition:padding .3s ease;
       box-shadow: 
         inset 3px 3px 6px var(--nm-shadow-dark),
         inset -3px -3px 6px var(--nm-shadow-light);
     }
+    /* 策略预设 */
+    .ata-presets-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap}
+    .ata-presets-hint{min-height:14px}
     .ata-collapse-body.open{display:block;padding:12px;}
     .ata-section-title{
       font-size:10px;color:var(--nm-text-secondary);
@@ -2290,7 +2345,7 @@
       startAngle += slice;
     });
     // 中心文字
-    ctx.fillStyle = 'var(--nm-text, #5a6a7a)';
+    ctx.fillStyle = '#5a6a7a';
     ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -2750,16 +2805,6 @@
     e.target.value = '';
   });
 
-  // 清空
-  $('#ata-clear-lib').addEventListener('click', () => { $('#ata-clear-confirm').style.display = 'block'; });
-  $('#ata-clear-yes').addEventListener('click', () => {
-    LibraryManager.clear();
-    refreshLibCount(); refreshStats(); renderBrowse(1);
-    $('#ata-clear-confirm').style.display = 'none';
-    showImportResult('🗑️ 已清空自定义题库', true);
-  });
-  $('#ata-clear-no').addEventListener('click', () => { $('#ata-clear-confirm').style.display = 'none'; });
-
   // 单条添加
   let _singleT = null;
   function showSingleMsg(msg, ok) {
@@ -3039,10 +3084,15 @@
   }
 
   /** 找到页面上所有题目容器 */
+  let _qContainersCache = null;
   function findQContainers() {
+    // 缓存命中：所有元素仍在 DOM 中
+    if (_qContainersCache && _qContainersCache.length > 0 && _qContainersCache[0].isConnected) {
+      return _qContainersCache;
+    }
     // MinuteStars 主策略：.answer 容器
     const ms = $$('.answer');
-    if (ms.length > 0) return ms;
+    if (ms.length > 0) { _qContainersCache = ms; return ms; }
 
     // 通用策略：按 input name 分组，向上找题目容器
     const groups = new Map();
@@ -3051,13 +3101,15 @@
       if (!groups.has(inp.name)) groups.set(inp.name, []);
       groups.get(inp.name).push(inp);
     });
-    return [...groups.values()].map(inps => {
+    const result = [...groups.values()].map(inps => {
       let el = inps[0].parentElement;
       for (let i = 0; i < 6 && el; el = el.parentElement, i++) {
         if (el.querySelectorAll('input[type="radio"],input[type="checkbox"]').length > 1) return el;
       }
       return inps[0].closest('li, .item, .question, fieldset') || inps[0].parentElement;
     }).filter(Boolean);
+    _qContainersCache = result;
+    return result;
   }
 
   /** 多策略勾选（兼容自定义 UI 组件） */
@@ -3464,6 +3516,7 @@
         // 记录答题速度
         const elapsed = Date.now() - _speedStart;
         _speedTimes.push(elapsed);
+        if (_speedTimes.length > 200) _speedTimes = _speedTimes.slice(-200);
         drawSpeedChart();
         setRunningStatus('答题中 ' + (i+1) + '/' + containers.length + ' 题 ' + pct + '%', 'running');
 
@@ -3522,10 +3575,18 @@
       clearInterval(submitTickId);
       submitTickId = null;
       running = false;
-          paused  = false;
-    inCountdown = false;
-    const pBtn = $('#ata-pause');
-    if (pBtn) { pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
+      paused  = false;
+      inCountdown = false;
+      const pBtn = $('#ata-pause');
+      if (pBtn) { pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
+    } finally {
+      // 正常完成后（非autoSubmit倒计时）重置 running
+      if (!inCountdown) {
+        running = false;
+        paused  = false;
+        const pBtn = $('#ata-pause');
+        if (pBtn) pBtn.style.display = 'none';
+      }
     }
   }
 
