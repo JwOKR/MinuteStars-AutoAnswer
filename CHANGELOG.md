@@ -2,7 +2,9 @@
 
 ## v4.5.62
 
-### 🐛 Bug 修复（6项）
+### 🐛 Bug 修复（8项）
+- **clear() dirtyKeys null**：清空题库后 `dirtyKeys` 未置 null，导致 `rebuildCache` 报 TypeError
+- **rebuildCache 空值保护**：`dirtyKeys?.size` 判空，防止 `Cannot read properties of null (reading 'size')`
 - **CSS语法修复**：`.ata-presets-row`/`.ata-presets-hint` 错误嵌套在 `.ata-collapse-body` 内部，已提取为独立规则
 - **事件重复绑定**：删除 `#ata-clear-lib/yes/no` 第一组重复绑定，保留带空值检查的 `$c()` 版本
 - **Canvas CSS变量**：`fillStyle` 不支持 `var(--nm-text)`，改为具体颜色 `#5a6a7a`
