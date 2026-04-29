@@ -561,7 +561,7 @@
       _cache.dirtyKeys?.add(question);
     },
 
-    clear() { GM_setValue(DB_KEY, '{}'); _cache.dirty = true; _cache.dirtyKeys = null; },
+    clear() { GM_setValue(DB_KEY, '{}'); _cache.dirty = true; _cache.dirtyKeys?.clear(); },
 
     exportJSON() { return JSON.stringify(this.load(), null, 2); },
     exportTXT() { return Object.entries(this.load()).map(([q, a]) => q + '||' + a).join('\n'); }
@@ -629,7 +629,7 @@
         }
       }
       _cache.raw = raw;
-      _cache.dirtyKeys.clear();
+      _cache.dirtyKeys?.clear();
       _cache.dirty = false;
       _cache.userCount = Object.keys(userDB).length;
       return;
@@ -657,7 +657,7 @@
     _cache.ngramIndex = ngramIndex;
     _cache.lenBuckets = lenBuckets;
     _cache.dirty = false;
-    _cache.dirtyKeys.clear();
+    _cache.dirtyKeys?.clear();
     _cache.userCount = Object.keys(userDB).length;
   }
   function getMergedCache() {
