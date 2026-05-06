@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.63
+// @version      4.5.64
 // @author       JIA
-// @description  MinuteStars专用：内置300+题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步 + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
+// @description  MinuteStars专用：纯云端题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步（上传合并/下载覆盖） + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
 // @match        https://erp.minutestars.com/*
 // @match        https://marketoperation.minutestars.com/*
@@ -74,10 +74,11 @@
   }
 
   /* =========================================================
-     内置题库（固定，不可删除）
+     内置题库（已弃用，v4.5.64 改为纯云端模式）
+     题库完全由用户管理，通过云端 Gist 同步，不再内置题库。
+     如需题库，请前往「题库管理」→「批量导入」或「云同步」下载。
   ========================================================= */
-  const BUILTIN_DB = {
-    "1.（）是指─段时间的技能学习，主要针对新人或者新业务。":"B",
+  const BUILTIN_DB = {}; // 保留占位，供 UI 判断使用
 "2.（）主要是联络感情，面对面做一对一会议等。":"C",
 "3.出差人凭核准的（）可向财务部暂支相当数额的旅差费，原则是前账不清，后账不借。":"A",
 "4.出差住宿报销标准：各省会、直辖市、全国大中城市、经济较发达地区，（）元以内/天，凭相应住宿发票报销。":"C",
@@ -479,14 +480,6 @@
 "292.免费流量和收费流量推广方式，取决于产品的利润空间和转化率":"A",
 "293.动销【整体】比单品权重高":"A",
 "294.淘宝（阿里）指数可以去zhi.taobao.com查询吗？":"B",
-"295.通过产品差异化带来更高的价值， 并且产品差异化成本低于产品差异化带来的价值，  形成一个差异化的竞争优势。":"A",
-"296.如何让你的产品脱颖而出？核心要抓住产品差异化，从根本提升品牌竞争力。":"A",
-"297.选款时，选择比努力更重要，这句话对吗？":"A",
-"298.价格折扣并不适合所有商家":"A",
-"299.市场容量的指标是：支付指数和支付金额父类目占比":"A",
-"300.当搜索热度除以在线商品数得出的倍数，倍数越大时竞争越小，倍数越小时竞争越大。":"A",
-  };
-
   /* =========================================================
      答题统计（答题速度记录）
   ========================================================= */
@@ -596,7 +589,8 @@
 
   function rebuildCache() {
     const userDB = LibraryManager.load();
-    const raw = { ...BUILTIN_DB, ...userDB };
+    // 纯云端：题库即用户自定义题库（从 GM_storage 或云端下载）
+    const raw = { ...userDB };
 
     // 增量更新：若有 dirtyKeys 且缓存已存在，则只更新变更部分
     if (_cache.cleanMap && _cache.dirtyKeys?.size > 0 && _cache.dirtyKeys?.size < 50) {
@@ -1000,12 +994,12 @@
     }
   }
 
-  /** 上传题库到 Gist */
+  /** 上传题库到 Gist（合并去重：本地题库优先，云端兜底） */
   async function cloudUpload() {
     if (!CFG.cloudSyncEnable || !CFG.cloudToken) {
       uLog('⚠️ 请先在设置中填写 Token 并开启云同步', 'warn'); return false;
     }
-    uLog('⬆️ 正在上传题库…', 'info');
+    uLog('⬆️ 正在上传题库（合并去重）…', 'info');
     try {
       let isUpdate = false;
       if (CFG.cloudGistId) {
@@ -1017,14 +1011,39 @@
           saveCFG();
         }
       }
-      const userDB = LibraryManager.load();
+      // ── 合并去重：本地题库优先 ──
+      const localDB = LibraryManager.load();
+      let cloudDB = {};
+      let cloudCount = 0;
+      if (isUpdate) {
+        try {
+          const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
+          const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+          const file = data.files?.['minutestars_qa.json'];
+          if (file) {
+            cloudDB = JSON.parse(file.content);
+            cloudCount = Object.keys(cloudDB).length;
+          }
+        } catch (e) {
+          uLog('⚠️ 获取云端题库失败，将以本地题库创建新 Gist: ' + e.message, 'warn');
+          isUpdate = false;
+        }
+      }
+      // 合并：云端题库 + 本地题库（本地优先，云端作为补充）
+      const merged = { ...cloudDB, ...localDB };
+      const localOnly = Object.keys(localDB).length;
+      const cloudOnly = cloudCount - Object.keys({ ...localDB, ...cloudDB }).length + Object.keys(localDB).length - localOnly;
+      // 实际新增：merged 有多少条是来自云端的（local没有的）
+      const cloudNewCount = Object.keys(merged).filter(k => !localDB.hasOwnProperty(k)).length;
+      uLog('📊 云端 ' + cloudCount + ' 条 + 本地 ' + localOnly + ' 条 = 合并 ' + Object.keys(merged).length + ' 条', 'info');
+
       const method = isUpdate ? 'PATCH' : 'POST';
       const payload = JSON.stringify({
         access_token: CFG.cloudToken,
         description: 'MinuteStars 答题器题库备份 ' + new Date().toLocaleString(),
         public: false,
         files: {
-          'minutestars_qa.json': { content: JSON.stringify(userDB, null, 2) },
+          'minutestars_qa.json': { content: JSON.stringify(merged, null, 2) },
         },
       });
       const resp = await _gistReq(method, gistUrl(CFG.cloudGistId), payload);
@@ -1035,9 +1054,9 @@
         saveCFG();
         uLog('✅ 首次上传成功！Gist ID 已保存。ID: ' + gistId, 'ok');
       } else {
-        uLog('✅ 题库已更新到 Gist', 'ok');
+        uLog('✅ 合并上传成功！共 ' + Object.keys(merged).length + ' 条（本地新增 ' + localOnly + ' 条，云端补充 ' + cloudNewCount + ' 条）', 'ok');
       }
-      gmNotify('云同步', '题库上传成功！');
+      gmNotify('云同步', '题库上传成功！共 ' + Object.keys(merged).length + ' 条');
       return true;
     } catch (e) {
       uLog('❌ 上传失败: ' + e.message, 'err');
@@ -1045,29 +1064,59 @@
     }
   }
 
-  /** 从 Gist 下载题库 */
+  /** 从 Gist 下载题库（覆盖本地：云端为唯一权威来源） */
   async function cloudDownload() {
     if (!CFG.cloudSyncEnable || !CFG.cloudToken || !CFG.cloudGistId) {
       uLog('⚠️ 请先在设置中填写 Token 和 Gist ID', 'warn'); return false;
     }
-    uLog('⬇️ 正在下载题库…', 'info');
+    uLog('⬇️ 正在下载题库（云端覆盖本地）…', 'info');
     try {
       const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
       const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
       const file = data.files?.['minutestars_qa.json'];
       if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
       const remoteDB = JSON.parse(file.content);
-      const localDB  = LibraryManager.load();
-      const merged   = { ...localDB, ...remoteDB }; // 远程覆盖本地重复项
-      LibraryManager.save(merged);
+      // 纯云端：直接用云端题库替换本地
+      LibraryManager.save(remoteDB);
       _cache.dirty = true;
       const cnt = Object.keys(remoteDB).length;
-      uLog('✅ 下载成功！合并 ' + cnt + ' 条题库（去重后）', 'ok');
+      uLog('✅ 下载成功！云端题库已覆盖本地，共 ' + cnt + ' 条', 'ok');
       refreshLibCount();
-      gmNotify('云同步', '题库下载成功！共 ' + cnt + ' 条。');
+      gmNotify('云同步', '题库下载成功！共 ' + cnt + ' 条（已覆盖本地）');
       return true;
     } catch (e) {
       uLog('❌ 下载失败: ' + e.message, 'err');
+      return false;
+    }
+  }
+
+  /** 从 Gist 导入题库（追加到本地：云端有则用云端，本地有则保留本地） */
+  async function cloudImport() {
+    if (!CFG.cloudSyncEnable || !CFG.cloudToken || !CFG.cloudGistId) {
+      uLog('⚠️ 请先在设置中填写 Token 和 Gist ID', 'warn'); return false;
+    }
+    uLog('☁ 正在导入云端题库（追加到本地）…', 'info');
+    try {
+      const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
+      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+      const file = data.files?.['minutestars_qa.json'];
+      if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
+      const cloudDB = JSON.parse(file.content);
+      const localDB = LibraryManager.load();
+      const before = Object.keys(localDB).length;
+      // 追加：云端补充本地没有的条目
+      const merged = { ...localDB, ...cloudDB };
+      LibraryManager.save(merged);
+      _cache.dirty = true;
+      const after = Object.keys(merged).length;
+      const newCount = after - before;
+      uLog('✅ 导入成功！本地 ' + before + ' 条 + 云端新增 ' + newCount + ' 条 = 合计 ' + after + ' 条', 'ok');
+      refreshLibCount();
+      refreshStats();
+      gmNotify('云同步', '导入成功！新增 ' + newCount + ' 条（本地已有保留）');
+      return true;
+    } catch (e) {
+      uLog('❌ 导入失败: ' + e.message, 'err');
       return false;
     }
   }
@@ -1843,7 +1892,7 @@
       <div class="ata-hdr-icon">🤖</div>
       <div class="ata-hdr-txt">
         <div class="ata-hdr-title">千寻宜 MinuteStars 答题器</div>
-        <div class="ata-hdr-sub">题库 <span id="ata-lib-count">${LibraryManager.count + Object.keys(BUILTIN_DB).length}</span> 条</div>
+        <div class="ata-hdr-sub">题库 <span id="ata-lib-count">${LibraryManager.count}</span> 条</div>
       </div>
       <span class="ata-hdr-ver">${SCRIPT_VERSION}</span>
       <button class="ata-close-btn" id="ata-collapse-panel" title="收起面板">▼</button>
@@ -2037,10 +2086,11 @@
           <input type="text" id="cfg-cloud-gist-id" class="ata-text-input" placeholder="首次上传后自动填充" style="width:100%;box-sizing:border-box">
         </div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-          <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px">⬆ 上传题库</button>
-          <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px">⬇ 下载题库</button>
+          <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px">⬆ 上传题库（合并）</button>
+          <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px">⬇ 下载题库（覆盖）</button>
+          <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px">☁ 导入云端</button>
         </div>
-        <div style="font-size:10px;color:#888;margin-top:4px">💡 需要 Gitee 账号 → 个人设置 → 私人令牌 → 生成令牌（勾选 gists）</div>
+        <div style="font-size:10px;color:#888;margin-top:4px">💡 上传=云端+本地合并（本地优先）；下载=云端覆盖本地；导入=拉取云端追加到本地</div>
       </div>
 
       <div class="ata-section-title">答题报告</div>
@@ -2120,7 +2170,7 @@
             <div class="ata-stat-card"><div class="num" id="stat-total">0</div><div class="lab">题库总数</div></div>
             <div class="ata-stat-card"><div class="num" id="stat-single">0</div><div class="lab">单选/判断</div></div>
             <div class="ata-stat-card"><div class="num" id="stat-multi">0</div><div class="lab">多选题</div></div>
-            <div class="ata-stat-card"><div class="num" id="stat-user">0</div><div class="lab">自定义添加</div></div>
+            <div class="ata-stat-card"><div class="num" id="stat-user">0</div><div class="lab">题库总数</div></div>
           </div>
           <!-- 题库来源分布饼图 -->
           <div class="ata-source-chart" id="ata-source-chart">
@@ -2128,13 +2178,13 @@
             <div style="display:flex;align-items:center;gap:16px">
               <canvas id="ata-pie-canvas" width="100" height="100" style="flex-shrink:0"></canvas>
               <div class="ata-chart-legend" id="ata-chart-legend">
-                <div class="ata-legend-item"><span class="ata-legend-dot" style="background:#5a8dee"></span>内置题库 <span id="stat-builtin-pct">0%</span></div>
-                <div class="ata-legend-item"><span class="ata-legend-dot" style="background:#48bb78"></span>自定义题库 <span id="stat-user-pct">0%</span></div>
+                <div class="ata-legend-item"><span class="ata-legend-dot" style="background:#5a8dee"></span>云端题库 <span id="stat-builtin-pct">0%</span></div>
+                <div class="ata-legend-item"><span class="ata-legend-dot" style="background:#48bb78"></span>本地题库 <span id="stat-user-pct">0%</span></div>
               </div>
             </div>
           </div>
           <div style="font-size:12px;color:#aaa;margin-bottom:10px">
-            内置 ${Object.keys(BUILTIN_DB).length} 条（固定）+ 自定义 <span id="stat-uc">0</span> 条（可增删）
+            当前题库 <span id="stat-uc">0</span> 条（来源：本地导入 或 云端下载）
           </div>
           <button class="ata-btn red" id="ata-clear-lib">🗑️ 清空自定义题库</button>
           <div id="ata-clear-confirm" style="display:none;margin-top:6px;font-size:12px;color:#ef5350">
@@ -2186,8 +2236,6 @@
           <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
             <select id="ata-lib-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
               <option value="all">全部题目</option>
-              <option value="builtin">内置题库</option>
-              <option value="user">自定义题库</option>
             </select>
             <select id="ata-lib-tag-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
               <option value="">全部标签</option>
@@ -2288,8 +2336,7 @@
      题库管理 UI 逻辑
   ========================================================= */
   function refreshLibCount() {
-    const uc = LibraryManager.count;
-    const total = uc + Object.keys(BUILTIN_DB).length;
+    const total = LibraryManager.count;
     const el1 = $('#ata-lib-count'), el3 = $('#ata-lib-total');
     if (el1) el1.textContent = total;
     if (el3) el3.textContent = total;
@@ -2306,14 +2353,11 @@
     [['stat-total', total],['stat-single', single],['stat-multi', multi],['stat-user', uc],['stat-uc', uc]].forEach(([id, val]) => {
       const el = $(('#'+id)); if (el) el.textContent = val;
     });
-    // 绘制饼图
-    const builtinCount = Object.keys(BUILTIN_DB).length;
-    const userCount = uc;
-    const bPct = total > 0 ? Math.round(builtinCount / total * 100) : 0;
-    const uPct = total > 0 ? Math.round(userCount / total * 100) : 0;
-    const bEl = $('#stat-builtin-pct'); if (bEl) bEl.textContent = bPct + '%';
-    const uEl = $('#stat-user-pct'); if (uEl) uEl.textContent = uPct + '%';
-    drawPieChart('ata-pie-canvas', [builtinCount, userCount], ['#5a8dee', '#48bb78']);
+    // 绘制饼图（纯云端：全部为云端题库，统一显示）
+    const total2 = Object.keys(db).length;
+    const bEl = $('#stat-builtin-pct'); if (bEl) bEl.textContent = total2 > 0 ? '100%' : '0%';
+    const uEl = $('#stat-user-pct'); if (uEl) uEl.textContent = '0%';
+    drawPieChart('ata-pie-canvas', [total2], ['#5a8dee']);
   }
 
   // 绘制饼图
@@ -2935,8 +2979,8 @@
     }
     // ── 分类过滤 ──
     entries = entries.filter(([q]) => {
-      if (filter === 'builtin') return !!BUILTIN_DB[q];
-      if (filter === 'user')    return !BUILTIN_DB[q];
+      if (filter === 'builtin') return false; // 纯云端模式无内置题库
+      if (filter === 'user')    return true;  // 全部都是用户题库
       return true;
     });
     // ── 标签过滤 ──
@@ -2972,14 +3016,11 @@
       frag.appendChild(tr);
     }
     slice.forEach(([q, a]) => {
-      const isBuiltin = !!BUILTIN_DB[q];
       const qHtml = _highlight(q, keyword, useRegex);
       const tr = document.createElement('tr');
       tr.innerHTML = '<td class="q-cell">' + qHtml + '</td>'
         + '<td style="color:#ffa726;font-weight:bold">' + escHtml(String(a)) + '</td>'
-        + '<td>' + (isBuiltin
-          ? '<span style="color:#555;font-size:10px">内置</span>'
-          : '<button class="del-btn" data-q="' + escHtml(q) + '">删除</button>') + '</td>';
+        + '<td><button class="del-btn" data-q="' + escHtml(q) + '">删除</button></td>';
       frag.appendChild(tr);
     });
     tbody.innerHTML = '';
@@ -3857,6 +3898,7 @@
   // v4.5.39 云同步按钮
   document.getElementById('ata-cloud-upload')?.addEventListener('click', () => cloudUpload());
   document.getElementById('ata-cloud-download')?.addEventListener('click', () => cloudDownload());
+  document.getElementById('ata-cloud-import')?.addEventListener('click', () => cloudImport());
 
   // v4.5.39 答题报告导出
   document.getElementById('ata-export-report-json')?.addEventListener('click', () => {
