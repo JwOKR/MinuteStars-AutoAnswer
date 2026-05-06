@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.65
+// @version      4.5.66
 // @author       JIA
-// @description  MinuteStars专用：纯云端题库 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步（上传合并/下载覆盖） + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
+// @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步（上传合并/下载覆盖） + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        https://pcs.minutestars.com/*
 // @match        https://erp.minutestars.com/*
 // @match        https://marketoperation.minutestars.com/*
@@ -50,6 +50,7 @@
     aiApiKey:         '',     // DeepSeek / 硅基流动 API Key
     aiEndpoint:       'https://api.siliconflow.cn/v1/chat/completions', // 默认用硅基流动（免费额度）
     cloudSyncEnable:  false,  // 云同步开关
+    cloudReadMode:    'local', // 'local'=本地存储答题（需下载），'cloud'=直读云端答题（不落地）
     cloudGistId:      '',     // Gist ID
     cloudToken:       '',     // Gitee 私人令牌
   };
@@ -164,6 +165,31 @@
     dirtyKeys: new Set(), // 增量更新追踪
   };
 
+  /** 直读云端模式：内存缓存 + 最后拉取时间 */
+  let _cloudCache = null;
+  let _cloudCacheTime = 0;
+  const _CLOUD_CACHE_TTL = 5 * 60 * 1000; // 5 分钟 TTL，过期则重新拉取
+
+  /** 直读云端：从 Gist 拉取题库到内存（不落地本地） */
+  async function fetchCloudDB() {
+    const now = Date.now();
+    if (_cloudCache && (now - _cloudCacheTime) < _CLOUD_CACHE_TTL) return _cloudCache;
+    if (!CFG.cloudSyncEnable || !CFG.cloudToken || !CFG.cloudGistId) return null;
+    try {
+      const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
+      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+      const file = data.files?.['minutestars_qa.json'];
+      if (!file) return null;
+      _cloudCache = JSON.parse(file.content);
+      _cloudCacheTime = now;
+      uLog('☁ 云端题库已加载（' + Object.keys(_cloudCache).length + ' 条，有效期 5 分钟）', 'ok');
+      return _cloudCache;
+    } catch (e) {
+      uLog('❌ 云端题库拉取失败: ' + e.message, 'err');
+      return null;
+    }
+  }
+
   /** 将字符串切分为 2-gram 集合（中文按字符，英文按单词） */
   function _ngrams(text, n = 2) {
     const set = new Set();
@@ -181,8 +207,14 @@
   }
 
   function rebuildCache() {
-    const userDB = LibraryManager.load();
-    // 纯云端：题库即用户自定义题库（从 GM_storage 或云端下载）
+    let userDB;
+    if (CFG.cloudReadMode === 'cloud') {
+      // 直读云端模式：使用内存缓存题库（fetchCloudDB 需先调用）
+      userDB = _cloudCache || {};
+    } else {
+      // 本地模式：从 GM_storage 读取
+      userDB = LibraryManager.load();
+    }
     const raw = { ...userDB };
 
     // 增量更新：若有 dirtyKeys 且缓存已存在，则只更新变更部分
@@ -669,7 +701,12 @@
       const file = data.files?.['minutestars_qa.json'];
       if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
       const remoteDB = JSON.parse(file.content);
-      // 纯云端：直接用云端题库替换本地
+      // 直读云端模式：同时更新内存缓存
+      if (CFG.cloudReadMode === 'cloud') {
+        _cloudCache = remoteDB;
+        _cloudCacheTime = Date.now();
+      }
+      // 本地模式：保存到 GM_storage
       LibraryManager.save(remoteDB);
       _cache.dirty = true;
       const cnt = Object.keys(remoteDB).length;
@@ -695,15 +732,23 @@
       const file = data.files?.['minutestars_qa.json'];
       if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
       const cloudDB = JSON.parse(file.content);
-      const localDB = LibraryManager.load();
+      // 直读云端模式：与内存缓存合并
+      const localDB = CFG.cloudReadMode === 'cloud'
+        ? (_cloudCache || {})
+        : LibraryManager.load();
       const before = Object.keys(localDB).length;
       // 追加：云端补充本地没有的条目
       const merged = { ...localDB, ...cloudDB };
+      if (CFG.cloudReadMode === 'cloud') {
+        _cloudCache = merged;
+        _cloudCacheTime = Date.now();
+      }
       LibraryManager.save(merged);
       _cache.dirty = true;
       const after = Object.keys(merged).length;
       const newCount = after - before;
-      uLog('✅ 导入成功！本地 ' + before + ' 条 + 云端新增 ' + newCount + ' 条 = 合计 ' + after + ' 条', 'ok');
+      const modeHint = CFG.cloudReadMode === 'cloud' ? '（直读云端）' : '';
+      uLog('✅ 导入成功！本地 ' + before + ' 条 + 云端新增 ' + newCount + ' 条 = 合计 ' + after + ' 条' + modeHint, 'ok');
       refreshLibCount();
       refreshStats();
       gmNotify('云同步', '导入成功！新增 ' + newCount + ' 条（本地已有保留）');
@@ -1670,6 +1715,13 @@
         <label class="ata-toggle"><input type="checkbox" id="cfg-cloud-sync-enable"><span class="ata-slider"></span></label>
       </div>
       <div id="cfg-cloud-row" style="opacity:.4">
+        <div class="ata-row">
+          <span class="ata-label">答题模式</span>
+          <select id="cfg-cloud-read-mode" class="ata-text-input" style="width:auto;font-size:12px">
+            <option value="local">📥 本地存储（需下载）</option>
+            <option value="cloud">☁ 直读云端（实时）</option>
+          </select>
+        </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">Token</span>
           <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="Gitee 私人令牌" style="width:100%;box-sizing:border-box">
@@ -1683,7 +1735,7 @@
           <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px">⬇ 下载题库（覆盖）</button>
           <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px">☁ 导入云端</button>
         </div>
-        <div style="font-size:10px;color:#888;margin-top:4px">💡 上传=云端+本地合并（本地优先）；下载=云端覆盖本地；导入=拉取云端追加到本地</div>
+        <div style="font-size:10px;color:#888;margin-top:4px">💡 <b>本地</b>：下载到本地，离线可用 | <b>直读云端</b>：实时拉取，无需下载，缓存 5 分钟</div>
       </div>
 
       <div class="ata-section-title">答题报告</div>
@@ -3267,6 +3319,7 @@
     setChk('cfg-cloud-sync-enable', CFG.cloudSyncEnable);
     setVal('cfg-cloud-gist-id',     CFG.cloudGistId);
     setVal('cfg-cloud-token',       CFG.cloudToken);
+    setVal('cfg-cloud-read-mode',   CFG.cloudReadMode);
     // 联动显示
     const aiRow = ge('cfg-ai-row');
     if (aiRow) aiRow.style.opacity = CFG.aiEnable ? '1' : '.4';
@@ -3301,7 +3354,13 @@
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
     CFG.cloudGistId     = gVal('cfg-cloud-gist-id').trim();
     CFG.cloudToken      = gVal('cfg-cloud-token').trim();
+    CFG.cloudReadMode  = gVal('cfg-cloud-read-mode') || 'local';
     saveCFG();
+    // 模式切换后刷新缓存
+    _cache.dirty = true;
+    if (CFG.cloudReadMode === 'cloud') fetchCloudDB(); // 立即拉取云端
+    else { _cloudCache = null; _cloudCacheTime = 0; }
+    refreshLibCount();
   }
 
   // 折叠展开
@@ -3896,6 +3955,16 @@
     #ata-panel.ata-dark .ata-hdr-sub { color: #7a8a9a !important; }
     #ata-panel.ata-dark .ata-hdr-ver { color: #7a8a9a !important; background: #1e2530 !important; }
   `);
+
+  /* =========================================================
+     直读云端模式：启动时预拉取题库
+  ========================================================= */
+  if (CFG.cloudReadMode === 'cloud') {
+    fetchCloudDB().then(() => {
+      _cache.dirty = true; // 云端数据到手后标记缓存脏，重建索引
+      refreshLibCount();
+    });
+  }
 
   /* =========================================================
      初始化：检测题目数量
