@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.65
+
+### 🐛 Bug Fix
+- 修复语法错误：`const BUILTIN_DB = {};` 后的孤立键值对残留导致 `SyntaxError: Unexpected token ':'`
+
 ## v4.5.64
 
 ### 🔄 架构升级：纯云端模式
