@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.8.3
+
+### ⚙️ 配置调整
+- **云同步默认开启**：`cloudSyncEnable: false` → `true`（默认打开云同步）
+
 ## v4.8.2
 
 ### 🗑 移除功能
