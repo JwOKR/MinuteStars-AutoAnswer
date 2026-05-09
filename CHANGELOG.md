@@ -1,4 +1,10 @@
 # Changelog
+## v4.8.10
+### 🐛 修复
+- **修复刷新后本地导入题库丢失问题**：`save()` 和 `reload()` 现在同时备份数据到 `GM_setValue`
+- 确保 `load()` 在 `_cache.raw` 为 null 时能立即从 `GM_getValue` 读到数据，无需等待异步 `reload()` 完成
+- 修复因数据存进 IndexedDB 后，`GM_getValue` 读不到导致刷新后题库消失的问题
+
 ## v4.8.9
 ### 🐛 修复
 - **修复 `_cache is not defined` 错误**：添加 `_cache` 变量初始化（`raw/dirty/userCount/dirtyKeys/cleanMap/ngramIndex/lenBuckets`）
