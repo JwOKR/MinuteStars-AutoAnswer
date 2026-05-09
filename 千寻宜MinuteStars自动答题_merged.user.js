@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.10
+// @version      4.8.11
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -377,14 +377,16 @@
       if (_sourceMap) delete _sourceMap[question];
     },
 
-    /** 统计来源分布，返回 { cloud, local } */
+    /** 统计来源分布，返回 { cloud, local }
+     *  本地题库 = 本地存储里的题（本地导入 + 从云端下载到本地的）
+     *  云端题库 = 直读云端且不在本地存储的题（仅 cloudReadMode 时存在）
+     */
     getSourceStats() {
-      const stats = { cloud: 0, local: 0 };
-      const db = this.load();
-      for (const q of Object.keys(db)) {
-        const src = (_sourceMap || {})[q];
-        if (src === 'cloud') stats.cloud++;
-        else stats.local++;  // 默认归为 local（兼容无来源记录的老数据）
+      const localDB = this.load();
+      let stats = { local: Object.keys(localDB).length, cloud: 0 };
+      if (CFG.cloudReadMode === 'cloud' && _cloudCache) {
+        // 统计仅在云端缓存中、但不在本地存储的题目
+        stats.cloud = Object.keys(_cloudCache).filter(q => !localDB.hasOwnProperty(q)).length;
       }
       return stats;
     },
@@ -1573,9 +1575,9 @@
       const file = data.files?.['minutestars_qa.json'];
       if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
       const remoteDB = JSON.parse(file.content);
-      // 标记全部题目来源为云端
+      // 标记全部题目来源为本地（下载到本地的属于本地题库）
       if (!_sourceMap) _sourceMap = {};
-      Object.keys(remoteDB).forEach(q => { _sourceMap[q] = 'cloud'; });
+      Object.keys(remoteDB).forEach(q => { _sourceMap[q] = 'local'; });
       // 直读云端模式：同时更新内存缓存
       if (CFG.cloudReadMode === 'cloud') {
         _cloudCache = remoteDB;
@@ -1618,7 +1620,7 @@
       if (!_sourceMap) _sourceMap = {};
       for (const q of Object.keys(cloudDB)) {
         if (!localDB.hasOwnProperty(q)) {
-          _sourceMap[q] = 'cloud';
+          _sourceMap[q] = 'local';
         }
       }
       if (CFG.cloudReadMode === 'cloud') {
