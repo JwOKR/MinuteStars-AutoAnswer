@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.7.0
+// @version      4.8.0
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 错题本复习模式 + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -46,6 +46,14 @@
     aiEnable:         false,  // AI 辅助匹配（题库无命中时的语义兜底）
     aiApiKey:         '',     // DeepSeek / 硅基流动 API Key
     aiEndpoint:       'https://api.siliconflow.cn/v1/chat/completions', // 默认用硅基流动（免费额度）
+    // v4.8.0 多 AI 模型支持
+    aiModel:          'deepseek', // 当前模型：deepseek / openai / claude / gemini
+    aiModels:         {        // 各模型配置（可覆盖全局 apiKey/endpoint）
+      deepseek:  { apiKey:'', endpoint:'https://api.siliconflow.cn/v1/chat/completions', model:'deepseek-ai/DeepSeek-V3' },
+      openai:    { apiKey:'', endpoint:'https://api.openai.com/v1/chat/completions',    model:'gpt-4o' },
+      claude:    { apiKey:'', endpoint:'https://api.anthropic.com/v1/messages',      model:'claude-3-5-sonnet-20241022' },
+      gemini:    { apiKey:'', endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', model:'' },
+    },
     cloudSyncEnable:  false,  // 云同步开关
     cloudReadMode:    'local', // 'local'=本地存储答题（需下载），'cloud'=直读云端答题（不落地）
     cloudGistId:      '',     // Gist ID
@@ -714,6 +722,36 @@
   /** 混合相似度：Jaro-Winkler 为主，结合长度惩罚
    *  ⚡ v4.5.39：中文题目中"Jaro-Winkler + 长度过滤"比纯 Levenshtein 效果更好
    */
+  /**
+   * LRU 匹配缓存（v4.8.0 Phase3 性能优化）
+   * 缓存最近 500 条匹配结果，避免重复计算
+   */
+  const MatchCache = {
+    maxSize: 500,
+    cache: new Map(),  // key: cleanText(q), value: { ans, sim }
+    get(q) {
+      const key = typeof q === 'string' ? q : '';
+      if (this.cache.has(key)) {
+        // 移到末尾（最近使用）
+        const val = this.cache.get(key);
+        this.cache.delete(key);
+        this.cache.set(key, val);
+        return val;
+      }
+      return null;
+    },
+    set(q, ans, sim) {
+      const key = typeof q === 'string' ? q : '';
+      if (this.cache.has(key)) this.cache.delete(key);
+      else if (this.cache.size >= this.maxSize) {
+        // 删除最久未使用的（Map 的第一个 key）
+        this.cache.delete(this.cache.keys().next().value);
+      }
+      this.cache.set(key, { ans, sim });
+    },
+    clear() { this.cache.clear(); }
+  };
+
   function strSim(a, b) {
     if (!a || !b) return 0;
     const la = a.length, lb = b.length;
@@ -768,9 +806,17 @@
     const { cleanMap, lenBuckets } = getMergedCache();
     const nq = cleanText(qText);
 
+    // ── LRU 缓存检查 ──
+    const cached = MatchCache.get(nq);
+    if (cached) {
+      CFG.debug && console.log('[Match] Cache hit:', nq.substring(0,30), '->', cached.ans);
+      return cached.ans;
+    }
+
     // ── 精确匹配 O(1) ──
     let entry = cleanMap.get(nq) || cleanMap.get(nq.replace(/[?？]$/, ''));
     if (entry) {
+      MatchCache.set(nq, entry.ans, 1.0);
       CFG.debug && console.log('[Match] 精确:', entry.orig.substring(0,40), '->', entry.ans);
       return entry.ans;
     }
@@ -780,18 +826,16 @@
     // ── 模糊匹配：N-gram 候选预筛选 + 长度分桶 ──
     const nqLen = nq.length;
     const qBucket = _lenBucket(nqLen);
-    // 同桶 ±1 范围内
     const relevantBuckets = [qBucket - 1, qBucket, qBucket + 1].filter(
       b => b >= 0 && lenBuckets.has(b)
     );
 
-    const candidates = _ngramCandidates(nq); // Set<ck> 或 null（全量）
+    const candidates = _ngramCandidates(nq);
     let best = null, bestSim = 0;
     let processed = 0;
 
     for (const bucket of relevantBuckets) {
       for (const { ck, orig, ans } of lenBuckets.get(bucket)) {
-        // N-gram 过滤：不在候选集中的跳过
         if (candidates && !candidates.has(ck)) continue;
         processed++;
         const sim = strSim(nq, ck);
@@ -799,6 +843,7 @@
       }
     }
 
+    if (best) MatchCache.set(nq, best, bestSim);
     CFG.debug && console.log('[Match] 模糊(' + bestSim.toFixed(2) + ') 候选' + processed + '条:', best);
     return best;
   }
@@ -908,54 +953,92 @@
   let _aiFailCount = 0;           // 连续失败计数器
 
   async function aiMatch(qText, inputs) {
-    if (!CFG.aiEnable || !CFG.aiApiKey) return null;
+    if (!CFG.aiEnable || !CFG.aiModel) return null;
+    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
+    if (!apiKey) return null;
 
-    // ① 请求去重缓存：同题只问一次
-    if (_aiCache.has(qText)) {
-      CFG.debug && console.log('[AI Cache]', qText.substring(0,30), '->', _aiCache.get(qText));
-      return _aiCache.get(qText);
+    // ① 请求去重缓存：同题只问一次（按模型缓存）
+    const cacheKey = CFG.aiModel + '|' + qText;
+    if (_aiCache.has(cacheKey)) {
+      CFG.debug && console.log('[AI Cache]', CFG.aiModel, qText.substring(0,30), '->', _aiCache.get(cacheKey));
+      return _aiCache.get(cacheKey);
     }
 
     const optTexts = inputs.map(i => {
       const label = i.closest('label') || i.parentElement;
       return label ? label.textContent.replace(/\s+/g,' ').trim() : (i.value || '');
     });
-    const prompt = `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。
-
-题目：${qText}
-选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}
-
-请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。`;
 
     const retry = 3;
     for (let attempt = 0; attempt <= retry; attempt++) {
       try {
         const resp = await new Promise((resolve, reject) => {
+          const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+          const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
+          const apiKey = modelCfg.apiKey || CFG.aiApiKey;
+          const modelName = modelCfg.model || '';
+          let requestBody, headers = { 'Content-Type': 'application/json' };
+
+          // 根据模型构建请求体和请求头
+          if (CFG.aiModel === 'claude') {
+            headers['x-api-key'] = apiKey;
+            headers['anthropic-version'] = '2023-06-01';
+            requestBody = JSON.stringify({
+              model: modelName,
+              max_tokens: 32,
+              messages: [{ role: 'user', content: `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。` }],
+            });
+          } else if (CFG.aiModel === 'gemini') {
+            // Gemini 不需要 Authorization header，apiKey 在 URL 参数中
+            const geminiUrl = endpoint + '?key=' + apiKey;
+            requestBody = JSON.stringify({
+              contents: [{ parts: [{ text: `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。` }] }],
+              generationConfig: { maxOutputTokens: 32, temperature: 0.1 },
+            });
+            // 重新赋值 endpoint 为带 key 的 URL
+            // 注意：xhr.open 需要使用 geminiUrl
+            var _geminiUrl = geminiUrl;
+          } else {
+            // OpenAI 兼容格式（DeepSeek, OpenAI, 硅基流动）
+            const prompt = `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。`;
+            headers['Authorization'] = 'Bearer ' + apiKey;
+            requestBody = JSON.stringify({
+              model: modelName,
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 32,
+              temperature: 0.1,
+            });
+          }
+
           const xhr = new XMLHttpRequest();
-          xhr.open('POST', CFG.aiEndpoint, true);
-          xhr.setRequestHeader('Content-Type', 'application/json');
-          xhr.setRequestHeader('Authorization', 'Bearer ' + CFG.aiApiKey);
+          const finalUrl = CFG.aiModel === 'gemini' ? _geminiUrl : endpoint;
+          xhr.open('POST', finalUrl, true);
+          for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
           xhr.timeout = 15000;
           xhr.onload = () => resolve(xhr);
           xhr.onerror = reject;
           xhr.ontimeout = reject;
-          xhr.send(JSON.stringify({
-            model: 'deepseek-ai/DeepSeek-V3',
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 32,
-            temperature: 0.1,
-          }));
+          xhr.send(requestBody);
         });
 
         if (resp.status === 200) {
           const data = JSON.parse(resp.responseText);
-          const content = (data.choices?.[0]?.message?.content || '').trim();
+          let content = '';
+          // 根据模型解析响应
+          if (CFG.aiModel === 'claude') {
+            content = (data.content?.[0]?.text || '').trim();
+          } else if (CFG.aiModel === 'gemini') {
+            content = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          } else {
+            content = (data.choices?.[0]?.message?.content || '').trim();
+          }
           const match = content.match(/^[A-Z](?:,[A-Z])*$/i);
           if (match) {
             const result = match[0].toUpperCase();
-            _aiCache.set(qText, result);   // 写入缓存
-            _aiFailCount = 0;              // 成功，重置失败计数
-            CFG.debug && console.log('[AI Match]', qText.substring(0,30), '->', result);
+            _aiCache.set(cacheKey, result);
+            _aiFailCount = 0;
+            CFG.debug && console.log('[AI Match]', CFG.aiModel, qText.substring(0,30), '->', result);
             return result;
           }
           // 返回格式不对，不算失败，直接返回 null
@@ -2161,9 +2244,18 @@
         <label class="ata-toggle"><input type="checkbox" id="cfg-ai-enable"><span class="ata-slider"></span></label>
       </div>
       <div id="cfg-ai-row" style="opacity:.4">
+        <div class="ata-row">
+          <span class="ata-label">AI 模型</span>
+          <select id="cfg-ai-model" class="ata-text-input" style="width:auto;font-size:12px">
+            <option value="deepseek">DeepSeek（硅基流动）</option>
+            <option value="openai">OpenAI（GPT-4o）</option>
+            <option value="claude">Claude（Anthropic）</option>
+            <option value="gemini">Gemini（Google）</option>
+          </select>
+        </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">API Key</span>
-          <input type="password" id="cfg-ai-api-key" class="ata-text-input" placeholder="sk-... (硅基流动 / DeepSeek)" style="width:100%;box-sizing:border-box">
+          <input type="password" id="cfg-ai-api-key" class="ata-text-input" placeholder="sk-... (硅基流动 / DeepSeek)">
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">API 地址</span>
@@ -3924,8 +4016,12 @@
     setChk('cfg-shortcuts-enable',  CFG.shortcutsEnable);
     setChk('cfg-notify-enable',     CFG.notifyEnable);
     setChk('cfg-ai-enable',         CFG.aiEnable);
-    setVal('cfg-ai-api-key',        CFG.aiApiKey);
-    setVal('cfg-ai-endpoint',       CFG.aiEndpoint);
+    setVal('cfg-ai-model',        CFG.aiModel || 'deepseek');
+    // 根据当前模型加载对应配置
+    const curModelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+    setVal('cfg-ai-api-key',      curModelCfg.apiKey || CFG.aiApiKey);
+    setVal('cfg-ai-endpoint',     curModelCfg.endpoint || CFG.aiEndpoint);
+    setVal('cfg-ai-endpoint',     CFG.aiEndpoint);
     setChk('cfg-cloud-sync-enable', CFG.cloudSyncEnable);
     setVal('cfg-cloud-gist-id',     CFG.cloudGistId);
     setVal('cfg-cloud-token',       CFG.cloudToken);
@@ -3987,8 +4083,15 @@
     CFG.shortcutsEnable = gChk('cfg-shortcuts-enable');
     CFG.notifyEnable    = gChk('cfg-notify-enable');
     CFG.aiEnable        = gChk('cfg-ai-enable');
-    CFG.aiApiKey        = gVal('cfg-ai-api-key').trim();
-    CFG.aiEndpoint      = gVal('cfg-ai-endpoint').trim() || 'https://api.siliconflow.cn/v1/chat/completions';
+    CFG.aiModel         = gVal('cfg-ai-model') || 'deepseek';
+    // 保存每模型配置
+    if (!CFG.aiModels) CFG.aiModels = {};
+    if (!CFG.aiModels[CFG.aiModel]) CFG.aiModels[CFG.aiModel] = {};
+    CFG.aiModels[CFG.aiModel].apiKey = gVal('cfg-ai-api-key').trim();
+    CFG.aiModels[CFG.aiModel].endpoint = gVal('cfg-ai-endpoint').trim();
+    // 同时更新全局（向后兼容）
+    CFG.aiApiKey   = CFG.aiModels[CFG.aiModel].apiKey;
+    CFG.aiEndpoint = CFG.aiModels[CFG.aiModel].endpoint || 'https://api.siliconflow.cn/v1/chat/completions';
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
     CFG.cloudGistId     = gVal('cfg-cloud-gist-id').trim();
     CFG.cloudToken      = gVal('cfg-cloud-token').trim();
@@ -4177,6 +4280,25 @@
   document.getElementById('cfg-ai-enable')?.addEventListener('change', function () {
     const row = document.getElementById('cfg-ai-row');
     if (row) row.style.opacity = this.checked ? '1' : '.4';
+  });
+
+  // v4.8.0 模型选择切换 → 加载对应模型配置
+  document.getElementById('cfg-ai-model')?.addEventListener('change', function () {
+    const model = this.value;
+    const modelCfg = CFG.aiModels?.[model] || {};
+    const keyInput = document.getElementById('cfg-ai-api-key');
+    const epInput  = document.getElementById('cfg-ai-endpoint');
+    if (keyInput) keyInput.value = modelCfg.apiKey || '';
+    if (epInput)  epInput.value  = modelCfg.endpoint || '';
+    // 更新提示文本
+    const hints = {
+      deepseek: '💡 推荐使用 <b>硅基流动</b>（免费额度），或自备 DeepSeek Key',
+      openai:   '💡 使用 OpenAI API Key（sk-...），Endpoint 默认 api.openai.com',
+      claude:   '💡 使用 Anthropic API Key（sk-ant-...），Endpoint 默认 api.anthropic.com',
+      gemini:   '💡 使用 Google Gemini API Key，Endpoint 固定为 generativelanguage.googleapis.com',
+    };
+    const hintEl = document.querySelector('#cfg-ai-row > div:last-child');
+    if (hintEl) hintEl.innerHTML = hints[model] || hints.deepseek;
   });
 
   // v4.5.39 云同步开关 → 配置区可用状态

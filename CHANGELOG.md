@@ -1,5 +1,21 @@
 # Changelog
 
+## v4.8.0
+
+### ✨ 新功能（Phase3）
+- **多 AI 模型支持**：支持 DeepSeek（硅基流动）/ OpenAI（GPT-4o）/ Claude / Gemini 一键切换
+- **每模型独立配置**：各模型可单独设置 API Key / Endpoint，互不干扰
+- **LRU 匹配缓存**：缓存最近 500 条匹配结果，避免重复计算，提升答题速度
+
+### 🔧 性能优化
+- **匹配缓存**：LRU 缓存最近 500 条匹配结果，命中直接返回
+- **多模型适配**：自动识别模型响应格式（OpenAI / Claude / Gemini）
+
+### 🤖 AI 功能增强
+- **多模型切换**：UI 新增模型选择器（DeepSeek / OpenAI / Claude / Gemini）
+- **模型配置独立保存**：切换模型时自动加载对应 API Key / Endpoint
+- **请求格式自适应**：根据模型自动构建正确请求（OpenAI 兼容 / Claude / Gemini）
+
 ## v4.7.0
 
 ### ✨ 新功能（Phase2）
