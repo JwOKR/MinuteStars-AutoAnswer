@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.6.0
+// @version      4.7.0
 // @author       JIA
-// @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
+// @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 错题本复习模式 + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
 // @match        *://localhost/*
 // @grant        GM_setValue
@@ -51,6 +51,9 @@
     cloudGistId:      '',     // Gist ID
     cloudToken:       '',     // Gitee 私人令牌
     customDomains:    [],    // 自定义匹配域名（运行时生效）
+    // v4.7.0 错题本 + 复习模式
+    wrongReviewEnable: true,   // 错题本开关
+    reviewIntervals:   [1, 3, 7, 15, 30], // 复习间隔（天），艾宾浩斯简化版
   };
 
   /** 运行时配置（从 GM storage 恢复） */
@@ -76,6 +79,90 @@
      答题统计（答题速度记录）
   ========================================================= */
   let _speedTimes = [];
+  let _accuracyResults = []; // v4.7.0 正确率历史（1=命中，0=未命中）
+
+  /* =========================================================
+      语义去重检测（v4.7.0）
+      使用 N-gram + Jaro-Winkler 检测相似题，相似度 > 0.88 视为重复
+  ========================================================= */
+  function semanticDedupCheck(question, db) {
+    const nq = cleanText(question);
+    if (!nq || nq.length < 4) return null; // 太短无法判断
+    const nqLen = nq.length;
+    let bestMatch = null, bestSim = 0;
+    for (const existingQ of Object.keys(db)) {
+      const ck = cleanText(existingQ);
+      if (!ck || Math.abs(ck.length - nqLen) > Math.max(ck.length, nqLen) * 0.5) continue;
+      const sim = strSim(nq, ck);
+      if (sim > bestSim) { bestSim = sim; bestMatch = existingQ; }
+      if (sim > 0.95) break; // 几乎完全相同，提前退出
+    }
+    return bestSim > 0.88 ? bestMatch : null;
+  }
+
+  /* =========================================================
+      正确率趋势图（v4.7.0）
+      追踪每题命中情况，Canvas 绘制最近 50 题正确率折线
+  ========================================================= */
+  const ACC_HISTORY_MAX = 50;
+  function updateAccuracyHistory(matched) {
+    _accuracyResults.push(matched ? 1 : 0);
+    if (_accuracyResults.length > ACC_HISTORY_MAX) _accuracyResults.shift();
+    const wrap = document.getElementById('ata-acc-wrap');
+    if (wrap) wrap.style.display = '';
+    drawAccuracyChart();
+  }
+  function drawAccuracyChart() {
+    const canvas = document.getElementById('ata-acc-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const len = _accuracyResults.length;
+    if (len < 2) {
+      // 不足2条，显示占位
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('答题后显示趋势', 8, H / 2 + 4);
+      return;
+    }
+    // 计算滚动正确率（窗口=10）
+    const windowSize = Math.min(10, len);
+    const points = [];
+    for (let i = 0; i < len; i++) {
+      const start = Math.max(0, i - windowSize + 1);
+      const slice = _accuracyResults.slice(start, i + 1);
+      const rate = slice.reduce((a, b) => a + b, 0) / slice.length;
+      points.push(rate);
+    }
+    // 绘制
+    const padL = 4, padR = 4, padT = 6, padB = 14;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+    // 背景网格线（可选）
+    ctx.strokeStyle = 'rgba(148,163,184,0.18)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (1 - i / 4) * plotH;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+    }
+    // 折线
+    ctx.beginPath();
+    ctx.strokeStyle = '#5a8dee';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < points.length; i++) {
+      const x = padL + (i / (points.length - 1 || 1)) * plotW;
+      const y = padT + (1 - points[i]) * plotH;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // 当前正确率
+    const curRate = points[points.length - 1];
+    const avgRate = _accuracyResults.reduce((a, b) => a + b, 0) / len;
+    const avgEl = document.getElementById('ata-acc-avg');
+    if (avgEl) avgEl.textContent = '正确率 ' + (curRate * 100).toFixed(0) + '% (均 ' + (avgRate * 100).toFixed(0) + '%)';
+  }
 
   /* =========================================================
      题库管理器（GM_setValue 持久化，跨会话保存用户自定义题库）
@@ -104,6 +191,12 @@
 
     async add(question, answer) {
       const db = await this.reload();
+      // v4.7.0 语义去重：检测相似题（N-gram + Jaro-Winkler）
+      const dup = semanticDedupCheck(question, db);
+      if (dup) {
+        uLog('⚡ 语义去重跳过：与现有题目相似度 > 0.88（' + dup.substring(0, 30) + '...）', 'info');
+        return { skipped: true, similarTo: dup };
+      }
       db[question] = answer;
       await this.save(db);
       _cache.dirty = true;
@@ -133,7 +226,15 @@
         }
         if (q && a) {
           if (db.hasOwnProperty(q)) {
-            duplicates.push({ q, oldAns: db[q], newAns: a });
+            duplicates.push({ q, oldAns: db[q], newAns: a, type: 'exact' });
+          } else {
+            // v4.7.0 语义去重：检测相似题
+            const simDup = semanticDedupCheck(q, db);
+            if (simDup) {
+              duplicates.push({ q, oldAns: db[simDup], newAns: a, type: 'semantic', similarTo: simDup });
+              skipped++;
+              continue;
+            }
           }
           db[q] = a; added++;
         } else skipped++;
@@ -306,6 +407,107 @@
       GM_setValue(key, '{}');
       GM_setValue(key + '__backend', 'gm');
       try { await this.idbClear(); } catch {}
+    }
+  };
+
+  /* =========================================================
+      WrongQuestionManager — 错题本 + 复习模式（v4.7.0）
+      艾宾浩斯简化版：间隔 [1,3,7,15,30] 天
+  ========================================================= */
+  const WB_KEY = 'ata_wrong_book';
+  const REVIEW_INTERVALS = [1, 3, 7, 15, 30]; // 天
+
+  const WrongQuestionManager = {
+    /** 获取全部错题数据：{ question: { ans, wrongCount, lastReview, nextReview, intervalIdx } } */
+    async getAll() {
+      try {
+        const raw = await StorageManager.get(WB_KEY) || '{}';
+        return JSON.parse(raw) || {};
+      } catch { return {}; }
+    },
+
+    /** 保存全部错题数据 */
+    async saveAll(data) {
+      await StorageManager.set(WB_KEY, JSON.stringify(data));
+    },
+
+    /** 记录错题（答题错误时调用） */
+    async add(question, userAnswer, correctAnswer) {
+      if (!CFG.wrongReviewEnable) return;
+      const all = await this.getAll();
+      const now = Date.now();
+      if (all[question]) {
+        // 已有记录：更新错误次数，如果已到复习时间且答对了则推进间隔
+        all[question].wrongCount = (all[question].wrongCount || 0) + 1;
+        all[question].lastWrong = now;
+        // 重置复习间隔（答错了，从头来）
+        all[question].intervalIdx = 0;
+        all[question].nextReview = now + 1 * 24 * 3600 * 1000;
+      } else {
+        all[question] = {
+          ans: correctAnswer,
+          wrongCount: 1,
+          lastWrong: now,
+          lastReview: 0,
+          nextReview: now + 1 * 24 * 3600 * 1000, // 1天后复习
+          intervalIdx: 0,
+          userAnswers: [userAnswer]
+        };
+      }
+      if (all[question].userAnswers && !all[question].userAnswers.includes(userAnswer)) {
+        all[question].userAnswers.push(userAnswer);
+      }
+      await this.saveAll(all);
+    },
+
+    /** 记录复习结果（复习模式中调用） */
+    async recordReview(question, isCorrect) {
+      const all = await this.getAll();
+      const entry = all[question];
+      if (!entry) return;
+      if (isCorrect) {
+        // 答对了：推进间隔
+        entry.lastReview = Date.now();
+        entry.intervalIdx = Math.min(entry.intervalIdx + 1, REVIEW_INTERVALS.length - 1);
+        const days = REVIEW_INTERVALS[entry.intervalIdx];
+        entry.nextReview = Date.now() + days * 24 * 3600 * 1000;
+        if (entry.intervalIdx >= REVIEW_INTERVALS.length - 1) {
+          // 完成全部间隔：从错题本移除
+          delete all[question];
+          uLog('✅ 错题已掌握，移除：' + question.substring(0, 30), 'ok');
+        }
+      } else {
+        // 答错了：重置间隔
+        entry.intervalIdx = 0;
+        entry.nextReview = Date.now() + 1 * 24 * 3600 * 1000;
+      }
+      await this.saveAll(all);
+    },
+
+    /** 获取今天需要复习的错题列表 */
+    async getDueQuestions() {
+      const all = await this.getAll();
+      const now = Date.now();
+      return Object.entries(all)
+        .filter(([, v]) => v.nextReview && v.nextReview <= now)
+        .sort((a, b) => (a[1].nextReview || 0) - (b[1].nextReview || 0));
+    },
+
+    /** 获取错题统计 */
+    async getStats() {
+      const all = await this.getAll();
+      const now = Date.now();
+      const entries = Object.entries(all);
+      return {
+        total: entries.length,
+        due: entries.filter(([, v]) => v.nextReview && v.nextReview <= now).length,
+        mastered: entries.filter(([, v]) => v.intervalIdx >= REVIEW_INTERVALS.length - 1).length,
+      };
+    },
+
+    /** 清除全部错题 */
+    async clear() {
+      await StorageManager.remove(WB_KEY);
     }
   };
 
@@ -1491,12 +1693,52 @@
     .ata-answered{background:rgba(72,187,120,.1)!important;}
     .ata-no-match{background:rgba(248,113,113,.1)!important;}
 
+    /* 正确率趋势图（v4.7.0） */
+    .ata-acc-wrap{display:none;padding:8px 14px 6px;border-top:1px solid rgba(0,0,0,.04);}
+    .ata-acc-hd{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--nm-text-secondary);margin-bottom:4px;}
+    .ata-acc-avg{font-weight:600;color:var(--nm-accent);}
+
+    /* 答题记录来源圆点（v4.7.0） */
+    .ata-method-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle;}
+    .ata-method-dot.library{background:#5a8dee;}
+    .ata-method-dot.rule{background:#fbbf24;}
+    .ata-method-dot.ai{background:#48bb78;}
+    .ata-method-dot.none{background:#94a3b8;}
+
     /* 题库管理弹窗 */
     #ata-lib-modal{
       display:none;position:fixed;inset:0;z-index:var(--z-modal);
       background:rgba(0,0,0,.35);align-items:center;justify-content:center;
     }
     #ata-lib-modal.show{display:flex;}
+    /* 复习模式弹窗 */
+    #ata-review-modal{display:none;position:fixed;inset:0;z-index:var(--z-modal);background:rgba(0,0,0,.35);align-items:center;justify-content:center;}
+    #ata-review-modal.show{display:flex;}
+    #ata-review-box{
+      background:var(--nm-bg);border-radius:var(--nm-radius-lg);
+      width:540px;max-width:96vw;max-height:88vh;
+      display:flex;flex-direction:column;overflow:hidden;
+      box-shadow:12px 12px 24px var(--nm-shadow-dark),-12px -12px 24px var(--nm-shadow-light);
+    }
+    #ata-review-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:16px 20px;
+      background:linear-gradient(145deg,#feebc8,#fef3c7);
+      border-radius:var(--nm-radius-lg) var(--nm-radius-lg) 0 0;
+      border-bottom:1px solid rgba(0,0,0,0.05);
+      font-weight:600;font-size:15px;color:#92400e;
+    }
+    #ata-review-close{
+      background:var(--nm-bg);border:none;color:#7a8a9a;font-size:14px;
+      cursor:pointer;line-height:1;padding:8px 12px;border-radius:var(--nm-radius);
+    }
+    #ata-review-body{padding:20px;overflow-y:auto;}
+    #ata-review-progress{font-size:12px;color:#888;margin-bottom:12px;}
+    #ata-review-question{font-size:15px;font-weight:600;margin-bottom:16px;line-height:1.6;}
+    #ata-review-input-wrap{margin-bottom:12px;}
+    #ata-review-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+    #ata-review-result{font-size:12px;margin-top:8px;display:none;}
+    #ata-review-empty{text-align:center;color:#aaa;padding:40px 0;display:none;}
     #ata-lib-box{
       background:var(--nm-bg);border-radius:var(--nm-radius-lg);
       width:760px;max-width:96vw;max-height:88vh;
@@ -1811,6 +2053,15 @@
       <canvas id="ata-speed-canvas" width="300" height="40" style="width:100%;height:40px;display:block"></canvas>
     </div>
 
+    <!-- 正确率趋势图（v4.7.0） -->
+    <div class="ata-acc-wrap" id="ata-acc-wrap" style="display:none">
+      <div class="ata-acc-hd">
+        <span>📊 正确率趋势</span>
+        <span class="ata-acc-avg" id="ata-acc-avg">正确率 --</span>
+      </div>
+      <canvas id="ata-acc-canvas" width="300" height="45" style="width:100%;height:45px;display:block"></canvas>
+    </div>
+
     <!-- 状态指示条 -->
     <div class="ata-status-bar">
       <div class="ata-status-dot idle" id="ata-status-dot"></div>
@@ -1829,6 +2080,7 @@
         <button class="ata-btn"      id="ata-scan">🔍 扫描</button>
         <button class="ata-btn"      id="ata-collect">📥 采集</button>
         <button class="ata-btn purple" id="ata-open-lib">📚 题库</button>
+        <button class="ata-btn orange" id="ata-review-btn">📖 复习模式</button>
       </div>
     </div>
 
@@ -2197,6 +2449,136 @@
       </div>
     </div>
   `;
+
+  /* =========================================================
+      复习模式弹窗 HTML（v4.7.0）
+  ========================================================= */
+  const reviewModal = document.createElement('div');
+  reviewModal.id = 'ata-review-modal';
+  reviewModal.innerHTML = `
+    <div id="ata-review-box">
+      <div id="ata-review-header">
+        <span>📖 复习模式</span>
+        <span id="ata-review-close">✕</span>
+      </div>
+      <div id="ata-review-body">
+        <div id="ata-review-progress" style="font-size:12px;color:#888;margin-bottom:8px"></div>
+        <div id="ata-review-question" style="font-size:14px;font-weight:600;margin-bottom:12px;line-height:1.6"></div>
+        <div id="ata-review-input-wrap" style="margin-bottom:12px">
+          <input type="text" id="ata-review-answer" class="ata-text-input" placeholder="输入答案（如：A 或 A,B）" style="width:100%;box-sizing:border-box">
+        </div>
+        <div id="ata-review-actions" style="display:flex;gap:6px;justify-content:center">
+          <button class="ata-btn green" id="ata-review-submit">确认</button>
+          <button class="ata-btn yellow" id="ata-review-skip">跳过</button>
+          <button class="ata-btn" id="ata-review-remove">已从题库删除</button>
+        </div>
+        <div id="ata-review-result" style="font-size:12px;margin-top:8px;display:none"></div>
+        <div id="ata-review-empty" style="text-align:center;color:#aaa;padding:20px 0;display:none">暂无需要复习的错题，太棒了！</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(reviewModal);
+
+  /* =========================================================
+      复习模式逻辑（v4.7.0）
+  ========================================================= */
+  let _reviewQueue = [];
+  let _reviewIdx = 0;
+
+  // 打开复习模式
+  $('#ata-review-btn')?.addEventListener('click', async () => {
+    const due = await WrongQuestionManager.getDueQuestions();
+    if (!due.length) {
+      $('#ata-review-empty').style.display = 'block';
+      $('#ata-review-body').style.display = 'none';
+    } else {
+      $('#ata-review-empty').style.display = 'none';
+      $('#ata-review-body').style.display = 'block';
+      _reviewQueue = due;
+      _reviewIdx = 0;
+      showReviewQuestion();
+    }
+    reviewModal.classList.add('show');
+  });
+
+  // 关闭弹窗
+  $('#ata-review-close')?.addEventListener('click', () => {
+    reviewModal.classList.remove('show');
+  });
+
+  // 显示当前题目
+  function showReviewQuestion() {
+    if (_reviewIdx >= _reviewQueue.length) {
+      reviewModal.classList.remove('show');
+      uLog('✅ 复习完成！', 'ok');
+      return;
+    }
+    const [question, entry] = _reviewQueue[_reviewIdx];
+    const shortQ = question.length > 80 ? question.substring(0, 80) + '…' : question;
+    $('#ata-review-question').textContent = shortQ;
+    $('#ata-review-progress').textContent = `进度：${_reviewIdx + 1} / ${_reviewQueue.length}`;
+    $('#ata-review-answer').value = '';
+    $('#ata-review-result').style.display = 'none';
+  }
+
+  // 提交答案
+  $('#ata-review-submit')?.addEventListener('click', async () => {
+    if (_reviewIdx >= _reviewQueue.length) return;
+    const [question, entry] = _reviewQueue[_reviewIdx];
+    const input = ($('#ata-review-answer').value || '').trim().toUpperCase();
+    if (!input) return;
+    // 与存储的正确答案比较（允许逗号分隔的多选题）
+    const correct = (entry.ans || '').toUpperCase().replace(/\s+/g, '');
+    const isCorrect = correct ? input === correct : null; // null = 未知正确答案
+    await WrongQuestionManager.recordReview(question, isCorrect === true);
+    const resultEl = $('#ata-review-result');
+    resultEl.style.display = 'block';
+    if (isCorrect === true) {
+      resultEl.textContent = '✅ 正确！';
+      resultEl.style.color = '#48bb78';
+    } else if (isCorrect === false) {
+      resultEl.textContent = '❌ 错误，正确答案：' + (entry.ans || '未知');
+      resultEl.style.color = '#ef5350';
+    } else {
+      resultEl.textContent = '📝 已记录（未知正确答案）';
+      resultEl.style.color = '#ed8936';
+    }
+    setTimeout(() => nextReviewQuestion(), isCorrect ? 800 : 2000);
+  });
+
+  // 跳过本题
+  $('#ata-review-skip')?.addEventListener('click', () => {
+    nextReviewQuestion();
+  });
+
+  // 从错题本删除（用户已掌握/题目无效）
+  $('#ata-review-remove')?.addEventListener('click', async () => {
+    if (_reviewIdx >= _reviewQueue.length) return;
+    const [question] = _reviewQueue[_reviewIdx];
+    const all = await WrongQuestionManager.getAll();
+    delete all[question];
+    await WrongQuestionManager.saveAll(all);
+    uLog('🗑 已从错题本删除', 'info');
+    nextReviewQuestion();
+  });
+
+  async function nextReviewQuestion() {
+    _reviewIdx++;
+    if (_reviewIdx >= _reviewQueue.length) {
+      reviewModal.classList.remove('show');
+      uLog('✅ 复习完成！', 'ok');
+      const stats = await WrongQuestionManager.getStats();
+      uLog(`📖 剩余错题：${stats.total}，今日待复习：${stats.due}`, 'info');
+      return;
+    }
+    showReviewQuestion();
+  }
+
+  // 回车提交
+  $('#ata-review-answer')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#ata-review-submit')?.click();
+  });
+
   document.body.appendChild(modal);
 
   /* =========================================================
@@ -3408,8 +3790,14 @@
         }
         // 记录答题日志
         _logAnswer(txt, matchedAnswer, matchMethod);
+        // v4.7.0 错题本：未匹配的题目加入错题本
+        if (!matchedAnswer && CFG.wrongReviewEnable) {
+          WrongQuestionManager.add(txt, '', '');
+        }
         // 添加最近答题记录 & 更新命中率
         addRecentLog(txt, matchedAnswer, matchMethod);
+        // v4.7.0 正确率趋势图：记录本题命中情况
+        updateAccuracyHistory(matchedAnswer !== null);
         // 实时更新统计卡片（每题都更新，用 $c 缓存避免重复查询）
         const pct = Math.round((i + 1) / containers.length * 100);
         setProgress(i + 1, containers.length);
@@ -3693,7 +4081,7 @@
     }
     list.innerHTML = _recentLogs.map((log, i) => `
       <div class="ata-recent-item" data-idx="${i}">
-        <span class="ata-recent-method ${log.method}">${log.method === 'library' ? '题库' : log.method === 'rule' ? '规则' : log.method === 'ai' ? 'AI' : '—'}</span>
+        <span class="ata-method-dot ${log.method}" title="${log.method === 'library' ? '题库命中' : log.method === 'rule' ? '规则推断' : log.method === 'ai' ? 'AI匹配' : '未匹配'}"></span>
         <span class="ata-recent-q" title="${escHtml(log.q)}">${escHtml(log.q)}</span>
         <span class="ata-recent-ans">${log.a}</span>
       </div>
