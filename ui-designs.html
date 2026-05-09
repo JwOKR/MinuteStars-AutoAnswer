@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>答题面板 UI 设计方案</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  font-family: 'Microsoft YaHei', sans-serif; 
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+  min-height: 100vh;
+  padding: 40px 20px;
+  color: #fff;
+}
+h1 { text-align: center; margin-bottom: 10px; font-weight: 300; letter-spacing: 2px; }
+.subtitle { text-align: center; color: #888; margin-bottom: 50px; font-size: 14px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 40px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.card {
+  background: rgba(255,255,255,0.05);
+  border-radius: 20px;
+  padding: 30px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.card h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  font-weight: 400;
+  font-size: 18px;
+  color: #ccc;
+}
+.card h2 span { font-size: 12px; color: #666; margin-left: 10px; }
+
+/* ==================== 方案1: 毛玻璃 ==================== */
+.glass-panel {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.glass-header {
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.glass-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.glass-title { flex: 1; }
+.glass-title h3 { font-size: 14px; font-weight: 600; }
+.glass-title p { font-size: 11px; color: #aaa; }
+.glass-badge {
+  background: rgba(102,126,234,0.3);
+  border: 1px solid rgba(102,126,234,0.5);
+  color: #a5b4fc;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 11px;
+}
+.glass-body { padding: 16px; }
+.glass-stats {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px;
+}
+.glass-stat {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; padding: 10px 6px; text-align: center;
+}
+.glass-stat .num { font-size: 20px; font-weight: 700; }
+.glass-stat .lab { font-size: 10px; color: #888; margin-top: 2px; }
+.g1 .num { color: #a5b4fc; }
+.g2 .num { color: #86efac; }
+.g3 .num { color: #fca5a5; }
+.glass-bar {
+  height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-bottom: 12px;
+}
+.glass-bar-fill {
+  height: 100%; width: 65%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 10px;
+}
+.glass-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.glass-btn {
+  padding: 8px 14px; border-radius: 8px; border: none;
+  font-size: 12px; cursor: pointer; font-weight: 600;
+  transition: all 0.2s;
+}
+.gb-start { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+.gb-stop { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+.gb-pause { background: rgba(251,191,36,0.2); color: #fcd34d; border: 1px solid rgba(251,191,36,0.3); }
+
+/* ==================== 方案2: 霓虹 ==================== */
+.neon-panel {
+  background: #0a0a0f;
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 
+    0 0 20px rgba(0,255,136,0.1),
+    0 0 40px rgba(0,255,136,0.05),
+    inset 0 0 60px rgba(0,255,136,0.02);
+  border: 1px solid rgba(0,255,136,0.3);
+}
+.neon-header {
+  background: linear-gradient(90deg, rgba(0,255,136,0.1) 0%, transparent 50%, rgba(0,255,136,0.1) 100%);
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid rgba(0,255,136,0.2);
+}
+.neon-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, #00ff88, #00cc6a);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 0 20px rgba(0,255,136,0.5);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 20px rgba(0,255,136,0.5); }
+  50% { box-shadow: 0 0 30px rgba(0,255,136,0.8); }
+}
+.neon-title { flex: 1; }
+.neon-title h3 { font-size: 14px; font-weight: 600; color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.5); }
+.neon-title p { font-size: 11px; color: #666; }
+.neon-badge {
+  background: rgba(0,255,136,0.15);
+  border: 1px solid rgba(0,255,136,0.4);
+  color: #00ff88;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 11px;
+  text-shadow: 0 0 10px rgba(0,255,136,0.5);
+}
+.neon-body { padding: 16px; }
+.neon-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px; }
+.neon-stat {
+  background: rgba(0,255,136,0.03);
+  border: 1px solid rgba(0,255,136,0.15);
+  border-radius: 10px; padding: 10px 6px; text-align: center;
+}
+.neon-stat .num { font-size: 20px; font-weight: 700; color: #00ff88; text-shadow: 0 0 10px rgba(0,255,136,0.3); }
+.neon-stat .lab { font-size: 10px; color: #555; margin-top: 2px; }
+.neon-bar { height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.neon-bar-fill {
+  height: 100%; width: 65%;
+  background: linear-gradient(90deg, #00ff88, #00cc6a);
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0,255,136,0.5);
+}
+.neon-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.neon-btn {
+  padding: 8px 14px; border-radius: 8px; border: none;
+  font-size: 12px; cursor: pointer; font-weight: 600;
+}
+.nb-start { background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; box-shadow: 0 0 20px rgba(0,255,136,0.3); }
+.nb-stop { background: transparent; color: #ff6b6b; border: 1px solid #ff6b6b; box-shadow: 0 0 10px rgba(255,107,107,0.2); }
+.nb-pause { background: transparent; color: #ffd93d; border: 1px solid #ffd93d; box-shadow: 0 0 10px rgba(255,217,61,0.2); }
+
+/* ==================== 方案3: 简约白 ==================== */
+.mini-panel {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border: 1px solid #e5e7eb;
+}
+.mini-header {
+  background: #f9fafb;
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.mini-icon {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.mini-title { flex: 1; }
+.mini-title h3 { font-size: 13px; font-weight: 600; color: #111; }
+.mini-title p { font-size: 10px; color: #6b7280; }
+.mini-badge {
+  background: #dbeafe; color: #2563eb;
+  padding: 2px 8px; border-radius: 12px;
+  font-size: 10px; font-weight: 600;
+}
+.mini-body { padding: 14px; }
+.mini-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-bottom: 10px; }
+.mini-stat {
+  background: #f3f4f6; border-radius: 8px; padding: 8px 4px; text-align: center;
+}
+.mini-stat .num { font-size: 18px; font-weight: 700; color: #111; }
+.mini-stat .lab { font-size: 9px; color: #6b7280; margin-top: 1px; }
+.m1 .num { color: #2563eb; }
+.m2 .num { color: #16a34a; }
+.m3 .num { color: #dc2626; }
+.mini-bar { height: 5px; background: #e5e7eb; border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+.mini-bar-fill { height: 100%; width: 65%; background: #3b82f6; border-radius: 10px; }
+.mini-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.mini-btn {
+  padding: 6px 12px; border-radius: 6px; border: none;
+  font-size: 11px; cursor: pointer; font-weight: 600;
+}
+.mb-start { background: #2563eb; color: #fff; }
+.mb-stop { background: #fee2e2; color: #dc2626; }
+.mb-pause { background: #fef3c7; color: #d97706; }
+
+/* ==================== 方案4: 赛博朋克 ==================== */
+.cyber-panel {
+  background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+.cyber-panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #ff006e, #8338ec, #3a86ff, #06ffa5, #ffbe0b);
+  background-size: 300% 100%;
+  animation: gradient 3s linear infinite;
+}
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+.cyber-header {
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.cyber-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, #ff006e, #8338ec);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  position: relative;
+}
+.cyber-icon::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: linear-gradient(135deg, #ff006e, #8338ec) border-box;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.cyber-title { flex: 1; }
+.cyber-title h3 { font-size: 14px; font-weight: 600; background: linear-gradient(90deg, #ff006e, #8338ec); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.cyber-title p { font-size: 11px; color: #6e7681; }
+.cyber-badge {
+  background: linear-gradient(135deg, rgba(255,0,110,0.2), rgba(131,56,236,0.2));
+  border: 1px solid rgba(255,0,110,0.4);
+  color: #ff006e;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 11px;
+}
+.cyber-body { padding: 16px; }
+.cyber-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px; }
+.cyber-stat {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 10px 6px; text-align: center;
+}
+.cyber-stat .num { font-size: 20px; font-weight: 700; }
+.cyber-stat .lab { font-size: 10px; color: #6e7681; margin-top: 2px; }
+.c1 .num { color: #ff006e; }
+.c2 .num { color: #8338ec; }
+.c3 .num { color: #3a86ff; }
+.c4 .num { color: #06ffa5; }
+.cyber-bar { height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.cyber-bar-fill {
+  height: 100%; width: 65%;
+  background: linear-gradient(90deg, #ff006e, #8338ec, #3a86ff);
+  border-radius: 10px;
+}
+.cyber-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.cyber-btn {
+  padding: 8px 14px; border-radius: 8px; border: none;
+  font-size: 12px; cursor: pointer; font-weight: 600;
+}
+.cb-start { background: linear-gradient(135deg, #ff006e, #8338ec); color: #fff; }
+.cb-stop { background: transparent; color: #ff6b6b; border: 1px solid #ff6b6b; }
+.cb-pause { background: transparent; color: #ffd93d; border: 1px solid #ffd93d; }
+
+/* ==================== 方案5: 经典暗色 ==================== */
+.classic-panel {
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.classic-header {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.classic-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, #38bdf8, #0284c7);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 4px 12px rgba(56,189,248,0.3);
+}
+.classic-title { flex: 1; }
+.classic-title h3 { font-size: 14px; font-weight: 600; color: #f1f5f9; }
+.classic-title p { font-size: 11px; color: #64748b; }
+.classic-badge {
+  background: rgba(56,189,248,0.15);
+  border: 1px solid rgba(56,189,248,0.3);
+  color: #38bdf8;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 11px;
+}
+.classic-body { padding: 16px; }
+.classic-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px; }
+.classic-stat {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 10px 6px; text-align: center;
+}
+.classic-stat .num { font-size: 20px; font-weight: 700; }
+.classic-stat .lab { font-size: 10px; color: #64748b; margin-top: 2px; }
+.cl1 .num { color: #38bdf8; }
+.cl2 .num { color: #4ade80; }
+.cl3 .num { color: #f87171; }
+.cl4 .num { color: #fbbf24; }
+.classic-bar { height: 6px; background: #1e293b; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.classic-bar-fill { height: 100%; width: 65%; background: linear-gradient(90deg, #38bdf8, #0284c7); border-radius: 10px; }
+.classic-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.classic-btn {
+  padding: 8px 14px; border-radius: 8px; border: none;
+  font-size: 12px; cursor: pointer; font-weight: 600;
+}
+.clb-start { background: rgba(74,222,128,0.15); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+.clb-stop { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+.clb-pause { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+
+.label {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  margin-top: 12px;
+}
+.l-current { background: rgba(56,189,248,0.2); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); }
+</style>
+</head>
+<body>
+
+<h1>答题面板 UI 设计方案</h1>
+<p class="subtitle">5种风格 · 选择你喜欢的设计</p>
+
+<div class="grid">
+
+<!-- 方案1: 毛玻璃 -->
+<div class="card">
+  <h2>1. 毛玻璃 <span>Glassmorphism</span></h2>
+  <div class="glass-panel">
+    <div class="glass-header">
+      <div class="glass-icon">🤖</div>
+      <div class="glass-title">
+        <h3>MinuteStars 答题器</h3>
+        <p>题库 327 条</p>
+      </div>
+      <span class="glass-badge">v4.5.6</span>
+    </div>
+    <div class="glass-body">
+      <div class="glass-stats">
+        <div class="glass-stat g1"><div class="num">26</div><div class="lab">总题数</div></div>
+        <div class="glass-stat g2"><div class="num">17</div><div class="lab">已答题</div></div>
+        <div class="glass-stat g2"><div class="num">15</div><div class="lab">命中</div></div>
+        <div class="glass-stat g3"><div class="num">2</div><div class="lab">未命中</div></div>
+      </div>
+      <div class="glass-bar"><div class="glass-bar-fill"></div></div>
+      <div class="glass-btns">
+        <button class="glass-btn gb-start">▶ 开始答题</button>
+        <button class="glass-btn gb-pause">⏸ 暂停</button>
+        <button class="glass-btn gb-stop">⏹ 停止</button>
+      </div>
+    </div>
+  </div>
+  <span class="label l-current">✨ 半透明 · 现代感</span>
+</div>
+
+<!-- 方案2: 霓虹绿 -->
+<div class="card">
+  <h2>2. 霓虹绿 <span>Neon Green</span></h2>
+  <div class="neon-panel">
+    <div class="neon-header">
+      <div class="neon-icon">🤖</div>
+      <div class="neon-title">
+        <h3>MinuteStars 答题器</h3>
+        <p>题库 327 条</p>
+      </div>
+      <span class="neon-badge">v4.5.6</span>
+    </div>
+    <div class="neon-body">
+      <div class="neon-stats">
+        <div class="neon-stat"><div class="num">26</div><div class="lab">总题数</div></div>
+        <div class="neon-stat"><div class="num">17</div><div class="lab">已答题</div></div>
+        <div class="neon-stat"><div class="num">15</div><div class="lab">命中</div></div>
+        <div class="neon-stat"><div class="num">2</div><div class="lab">未命中</div></div>
+      </div>
+      <div class="neon-bar"><div class="neon-bar-fill"></div></div>
+      <div class="neon-btns">
+        <button class="neon-btn nb-start">▶ 开始答题</button>
+        <button class="neon-btn nb-pause">⏸ 暂停</button>
+        <button class="neon-btn nb-stop">⏹ 停止</button>
+      </div>
+    </div>
+  </div>
+  <span class="label l-current">💚 科技感 · 发光效果</span>
+</div>
+
+<!-- 方案3: 简约白 -->
+<div class="card">
+  <h2>3. 简约白 <span>Minimal Light</span></h2>
+  <div class="mini-panel">
+    <div class="mini-header">
+      <div class="mini-icon">🤖</div>
+      <div class="mini-title">
+        <h3>MinuteStars 答题器</h3>
+        <p>题库 327 条</p>
+      </div>
+      <span class="mini-badge">v4.5.6</span>
+    </div>
+    <div class="mini-body">
+      <div class="mini-stats">
+        <div class="mini-stat"><div class="num">26</div><div class="lab">总题数</div></div>
+        <div class="mini-stat m2"><div class="num">17</div><div class="lab">已答题</div></div>
+        <div class="mini-stat m2"><div class="num">15</div><div class="lab">命中</div></div>
+        <div class="mini-stat m3"><div class="num">2</div><div class="lab">未命中</div></div>
+      </div>
+      <div class="mini-bar"><div class="mini-bar-fill"></div></div>
+      <div class="mini-btns">
+        <button class="mini-btn mb-start">▶ 开始答题</button>
+        <button class="mini-btn mb-pause">⏸ 暂停</button>
+        <button class="mini-btn mb-stop">⏹ 停止</button>
+      </div>
+    </div>
+  </div>
+  <span class="label l-current">⬜ 干净 · 轻量</span>
+</div>
+
+<!-- 方案4: 赛博朋克 -->
+<div class="card">
+  <h2>4. 赛博朋克 <span>Cyberpunk</span></h2>
+  <div class="cyber-panel">
+    <div class="cyber-header">
+      <div class="cyber-icon">🤖</div>
+      <div class="cyber-title">
+        <h3>MinuteStars 答题器</h3>
+        <p>题库 327 条</p>
+      </div>
+      <span class="cyber-badge">v4.5.6</span>
+    </div>
+    <div class="cyber-body">
+      <div class="cyber-stats">
+        <div class="cyber-stat c1"><div class="num">26</div><div class="lab">总题数</div></div>
+        <div class="cyber-stat c2"><div class="num">17</div><div class="lab">已答题</div></div>
+        <div class="cyber-stat c3"><div class="num">15</div><div class="lab">命中</div></div>
+        <div class="cyber-stat c4"><div class="num">2</div><div class="lab">未命中</div></div>
+      </div>
+      <div class="cyber-bar"><div class="cyber-bar-fill"></div></div>
+      <div class="cyber-btns">
+        <button class="cyber-btn cb-start">▶ 开始答题</button>
+        <button class="cyber-btn cb-pause">⏸ 暂停</button>
+        <button class="cyber-btn cb-stop">⏹ 停止</button>
+      </div>
+    </div>
+  </div>
+  <span class="label l-current">🌈 渐变 · 动态边框</span>
+</div>
+
+<!-- 方案5: 经典暗色（当前） -->
+<div class="card">
+  <h2>5. 经典暗色 <span>Classic Dark</span></h2>
+  <div class="classic-panel">
+    <div class="classic-header">
+      <div class="classic-icon">🤖</div>
+      <div class="classic-title">
+        <h3>MinuteStars 答题器</h3>
+        <p>题库 327 条</p>
+      </div>
+      <span class="classic-badge">v4.5.6</span>
+    </div>
+    <div class="classic-body">
+      <div class="classic-stats">
+        <div class="classic-stat"><div class="num">26</div><div class="lab">总题数</div></div>
+        <div class="classic-stat cl2"><div class="num">17</div><div class="lab">已答题</div></div>
+        <div class="classic-stat cl2"><div class="num">15</div><div class="lab">命中</div></div>
+        <div class="classic-stat cl3"><div class="num">2</div><div class="lab">未命中</div></div>
+      </div>
+      <div class="classic-bar"><div class="classic-bar-fill"></div></div>
+      <div class="classic-btns">
+        <button class="classic-btn clb-start">▶ 开始答题</button>
+        <button class="classic-btn clb-pause">⏸ 暂停</button>
+        <button class="classic-btn clb-stop">⏹ 停止</button>
+      </div>
+    </div>
+  </div>
+  <span class="label l-current">🔵 当前使用</span>
+</div>
+
+</div>
+
+</body>
+</html>

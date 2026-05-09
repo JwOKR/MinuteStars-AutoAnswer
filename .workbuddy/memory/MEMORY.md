@@ -4,18 +4,23 @@
 - Jaro-Winkler 模糊匹配（替换 Levenshtein）
 - N-gram 候选预筛选 + 长度分桶索引
 - AI 辅助匹配（DeepSeek/硅基流动 API，CFG.aiEnable）
-- GitHub Gist 云同步（CFG.cloudSyncEnable）
+- Gitee Gist 云同步（CFG.cloudSyncEnable）
 - 快捷键：Alt+Enter / Alt+S / Alt+D / Ctrl+Shift+A
 - GM_notification 系统通知
 - 答题报告 JSON/CSV 导出
 - 题库浏览增强：正则搜索、答案筛选、随机抽查
 - 配置分离导出/导入
 
+## 仓库信息
+- GitHub: https://github.com/JwOKR/MinuteStars-AutoAnswer
+- Gitee: https://gitee.com/law-of-order/MinuteStars-AutoAnswer
+
 ## 踩坑经验
 - GM_notification 在不支持的环境中会静默失败，必须包 try-catch
 - **GM_xmlhttpRequest 必须声明 `@grant GM_xmlhttpRequest`**，否则跨域请求会失败（GitHub Gist 云同步失败就是这个原因）
 - AI 匹配默认用硅基流动 API（https://api.siliconflow.cn/v1/chat/completions），模型 DeepSeek-V3，免费额度足够
 - 设置折叠区用 `display:none/block`，不要用 `max-height:0` + `overflow:hidden`，后者会导致内部控件事件无法触发
+- GitHub Gist 上传 404：Gist ID 残留无效值导致 PATCH 请求到不存在的资源，需在上传前验证 ID 有效性
 
 ## 代码更新流程
 每次更新代码后，**必须按此顺序完成所有步骤**：

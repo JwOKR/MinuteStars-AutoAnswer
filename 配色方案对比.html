@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>新拟态配色方案对比</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      background: #dcdcdc;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    h1 { text-align: center; color: #666; margin-bottom: 10px; font-weight: 300; letter-spacing: 2px; }
+    .subtitle { text-align: center; color: #999; margin-bottom: 40px; font-size: 14px; }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 30px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    .scheme-card {
+      padding: 20px;
+      border-radius: 20px;
+    }
+    .scheme-card h3 {
+      text-align: center;
+      color: var(--text-color);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .scheme-card .tag {
+      text-align: center;
+      color: #999;
+      font-size: 12px;
+      margin-bottom: 20px;
+    }
+    
+    .color-palette {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .color-swatch {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      box-shadow: 3px 3px 6px rgba(0,0,0,0.15), -3px -3px 6px rgba(255,255,255,0.9);
+    }
+    .color-info {
+      text-align: center;
+      font-size: 11px;
+      color: #888;
+      margin-top: 6px;
+    }
+    
+    .panel {
+      background: var(--bg);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light);
+    }
+    .panel-header {
+      background: var(--header-bg);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .panel-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--icon-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 3px 3px 6px var(--shadow-dark), -2px -2px 4px var(--shadow-light);
+    }
+    .panel-title { flex: 1; }
+    .panel-title h4 { font-size: 13px; font-weight: 600; color: var(--title-color); }
+    .panel-title p { font-size: 10px; color: var(--subtitle-color); margin-top: 2px; }
+    
+    .panel-body { padding: 16px; }
+    
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 10px 4px;
+      text-align: center;
+      box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+    }
+    .stat .num { font-size: 18px; font-weight: 700; }
+    .stat .lab { font-size: 9px; color: var(--subtitle-color); margin-top: 3px; text-transform: uppercase; }
+    
+    .progress-wrap { margin-bottom: 12px; }
+    .progress-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-color); margin-bottom: 6px; }
+    .progress-bar {
+      height: 8px;
+      background: var(--bg);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 8px;
+    }
+    
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      flex: 1;
+      min-width: 70px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: none;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-color);
+      cursor: pointer;
+      box-shadow: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
+      transition: box-shadow 0.15s;
+    }
+    .btn:hover { box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light); }
+    .btn:active { box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light); }
+    
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: var(--bg);
+      border-radius: 10px;
+      box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--bg);
+      box-shadow: 2px 2px 4px var(--shadow-dark), -2px -2px 4px var(--shadow-light);
+    }
+    .status-dot.accent { background: var(--accent); }
+    .status-dot.success { background: #48bb78; }
+    .status-text { font-size: 11px; color: var(--subtitle-color); }
+    .status-text span { color: var(--text-color); font-weight: 600; }
+    
+    .scheme-desc {
+      margin-top: 14px;
+      padding: 10px;
+      background: var(--bg);
+      border-radius: 10px;
+      box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+      font-size: 11px;
+      color: var(--subtitle-color);
+      line-height: 1.6;
+    }
+    .scheme-desc strong { color: var(--text-color); }
+  </style>
+</head>
+<body>
+
+<h1>新拟态配色方案</h1>
+<p class="subtitle">6种风格可选 · 全部采用柔和双阴影系统</p>
+
+<div class="grid">
+
+  <!-- 方案1: 经典灰蓝 -->
+  <div class="scheme-card" style="
+    background: #e8e8e8;
+    --bg: #e0e5ec;
+    --shadow-dark: #b8bec7;
+    --shadow-light: #ffffff;
+    --text-color: #5a6a7a;
+    --subtitle-color: #9ca3af;
+    --accent: #5a8dee;
+    --header-bg: linear-gradient(145deg, #d4d9e2, #ebeff5);
+    --icon-bg: linear-gradient(145deg, #5a8dee, #4a7cdd);
+    --title-color: #4a5568;
+  ">
+    <h3>方案一 · 经典灰蓝</h3>
+    <p class="tag">Classic Blue-Gray</p>
+    
+    <div class="color-palette">
+      <div><div class="color-swatch" style="background: #e0e5ec;"></div><p class="color-info">#e0e5ec</p></div>
+      <div><div class="color-swatch" style="background: #b8bec7;"></div><p class="color-info">#b8bec7</p></div>
+      <div><div class="color-swatch" style="background: #5a8dee;"></div><p class="color-info">#5a8dee</p></div>
+      <div><div class="color-swatch" style="background: #48bb78;"></div><p class="color-info">#48bb78</p></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon">🤖</div>
+        <div class="panel-title">
+          <h4>答题器 Pro</h4>
+          <p>v4.5.20</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="stats-row">
+          <div class="stat"><div class="num" style="color: var(--accent);">26</div><div class="lab">总题数</div></div>
+          <div class="stat"><div class="num" style="color: #48bb78;">17</div><div class="lab">已答</div></div>
+          <div class="stat"><div class="num" style="color: #48bb78;">15</div><div class="lab">命中</div></div>
+          <div class="stat"><div class="num" style="color: #f87171;">2</div><div class="lab">未中</div></div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span>答题进度</span><span style="color: var(--accent);">65%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 65%;"></div></div>
+        </div>
+        <div class="status">
+          <div class="status-dot accent"></div>
+          <div class="status-text">状态：<span>答题中</span></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" style="color: #48bb78;">▶ 开始</button>
+          <button class="btn" style="color: var(--accent);">⏸ 暂停</button>
+          <button class="btn" style="color: #f87171;">⏹ 停止</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="scheme-desc">
+      <strong>特点：</strong>最经典的新拟态风格，柔和的蓝灰色调，百搭耐看，适合大多数应用场景。
+    </div>
+  </div>
+
+  <!-- 方案2: 紫罗兰 -->
+  <div class="scheme-card" style="
+    background: #e8e8e8;
+    --bg: #e8e4f0;
+    --shadow-dark: #c5c0d0;
+    --shadow-light: #ffffff;
+    --text-color: #5a5270;
+    --subtitle-color: #9088a0;
+    --accent: #8b5cf6;
+    --header-bg: linear-gradient(145deg, #d8d4e4, #f0ecf8);
+    --icon-bg: linear-gradient(145deg, #8b5cf6, #7c3aed);
+    --title-color: #4c4460;
+  ">
+    <h3>方案二 · 紫罗兰</h3>
+    <p class="tag">Violet Dream</p>
+    
+    <div class="color-palette">
+      <div><div class="color-swatch" style="background: #e8e4f0;"></div><p class="color-info">#e8e4f0</p></div>
+      <div><div class="color-swatch" style="background: #c5c0d0;"></div><p class="color-info">#c5c0d0</p></div>
+      <div><div class="color-swatch" style="background: #8b5cf6;"></div><p class="color-info">#8b5cf6</p></div>
+      <div><div class="color-swatch" style="background: #ec4899;"></div><p class="color-info">#ec4899</p></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon">🎯</div>
+        <div class="panel-title">
+          <h4>答题器 Pro</h4>
+          <p>v4.5.20</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="stats-row">
+          <div class="stat"><div class="num" style="color: var(--accent);">26</div><div class="lab">总题数</div></div>
+          <div class="stat"><div class="num" style="color: #10b981;">17</div><div class="lab">已答</div></div>
+          <div class="stat"><div class="num" style="color: #10b981;">15</div><div class="lab">命中</div></div>
+          <div class="stat"><div class="num" style="color: #f87171;">2</div><div class="lab">未中</div></div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span>答题进度</span><span style="color: var(--accent);">65%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 65%; background: var(--accent);"></div></div>
+        </div>
+        <div class="status">
+          <div class="status-dot" style="background: var(--accent);"></div>
+          <div class="status-text">状态：<span>答题中</span></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" style="color: #10b981;">▶ 开始</button>
+          <button class="btn" style="color: var(--accent);">⏸ 暂停</button>
+          <button class="btn" style="color: #f87171;">⏹ 停止</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="scheme-desc">
+      <strong>特点：</strong>浪漫的紫罗兰色调，带有梦幻感，适合年轻用户或娱乐类应用。
+    </div>
+  </div>
+
+  <!-- 方案3: 薄荷绿 -->
+  <div class="scheme-card" style="
+    background: #e8e8e8;
+    --bg: #e8f5f0;
+    --shadow-dark: #c0d5c8;
+    --shadow-light: #ffffff;
+    --text-color: #4a6660;
+    --subtitle-color: #7a9a90;
+    --accent: #10b981;
+    --header-bg: linear-gradient(145deg, #d8ebe4, #eff8f4);
+    --icon-bg: linear-gradient(145deg, #10b981, #059669);
+    --title-color: #3a5650;
+  ">
+    <h3>方案三 · 薄荷绿</h3>
+    <p class="tag">Mint Fresh</p>
+    
+    <div class="color-palette">
+      <div><div class="color-swatch" style="background: #e8f5f0;"></div><p class="color-info">#e8f5f0</p></div>
+      <div><div class="color-swatch" style="background: #c0d5c8;"></div><p class="color-info">#c0d5c8</p></div>
+      <div><div class="color-swatch" style="background: #10b981;"></div><p class="color-info">#10b981</p></div>
+      <div><div class="color-swatch" style="background: #06b6d4;"></div><p class="color-info">#06b6d4</p></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon">🌿</div>
+        <div class="panel-title">
+          <h4>答题器 Pro</h4>
+          <p>v4.5.20</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="stats-row">
+          <div class="stat"><div class="num" style="color: var(--accent);">26</div><div class="lab">总题数</div></div>
+          <div class="stat"><div class="num" style="color: var(--accent);">17</div><div class="lab">已答</div></div>
+          <div class="stat"><div class="num" style="color: #06b6d4;">15</div><div class="lab">命中</div></div>
+          <div class="stat"><div class="num" style="color: #f87171;">2</div><div class="lab">未中</div></div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span>答题进度</span><span style="color: var(--accent);">65%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 65%; background: linear-gradient(90deg, #10b981, #06b6d4);"></div></div>
+        </div>
+        <div class="status">
+          <div class="status-dot" style="background: var(--accent);"></div>
+          <div class="status-text">状态：<span>答题中</span></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" style="color: var(--accent);">▶ 开始</button>
+          <button class="btn" style="color: #06b6d4;">⏸ 暂停</button>
+          <button class="btn" style="color: #f87171;">⏹ 停止</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="scheme-desc">
+      <strong>特点：</strong>清新的薄荷绿色调，给人活力与自然感，适合学习类或健康类应用。
+    </div>
+  </div>
+
+  <!-- 方案4: 珊瑚橙 -->
+  <div class="scheme-card" style="
+    background: #e8e8e8;
+    --bg: #f5ebe8;
+    --shadow-dark: #d0c5c0;
+    --shadow-light: #ffffff;
+    --text-color: #6a5a50;
+    --subtitle-color: #9a8a80;
+    --accent: #f97316;
+    --header-bg: linear-gradient(145deg, #e4dbd6, #f8f0ec);
+    --icon-bg: linear-gradient(145deg, #f97316, #ea580c);
+    --title-color: #5a4a40;
+  ">
+    <h3>方案四 · 珊瑚橙</h3>
+    <p class="tag">Coral Energy</p>
+    
+    <div class="color-palette">
+      <div><div class="color-swatch" style="background: #f5ebe8;"></div><p class="color-info">#f5ebe8</p></div>
+      <div><div class="color-swatch" style="background: #d0c5c0;"></div><p class="color-info">#d0c5c0</p></div>
+      <div><div class="color-swatch" style="background: #f97316;"></div><p class="color-info">#f97316</p></div>
+      <div><div class="color-swatch" style="background: #eab308;"></div><p class="color-info">#eab308</p></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon">🔥</div>
+        <div class="panel-title">
+          <h4>答题器 Pro</h4>
+          <p>v4.5.20</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="stats-row">
+          <div class="stat"><div class="num" style="color: var(--accent);">26</div><div class="lab">总题数</div></div>
+          <div class="stat"><div class="num" style="color: #22c55e;">17</div><div class="lab">已答</div></div>
+          <div class="stat"><div class="num" style="color: #22c55e;">15</div><div class="lab">命中</div></div>
+          <div class="stat"><div class="num" style="color: #f87171;">2</div><div class="lab">未中</div></div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span>答题进度</span><span style="color: var(--accent);">65%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 65%; background: var(--accent);"></div></div>
+        </div>
+        <div class="status">
+          <div class="status-dot" style="background: var(--accent);"></div>
+          <div class="status-text">状态：<span>答题中</span></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" style="color: #22c55e;">▶ 开始</button>
+          <button class="btn" style="color: #eab308;">⏸ 暂停</button>
+          <button class="btn" style="color: var(--accent);">⏹ 停止</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="scheme-desc">
+      <strong>特点：</strong>充满活力的珊瑚橙色调，高对比度，适合需要突出操作感的场景。
+    </div>
+  </div>
+
+  <!-- 方案5: 深空灰 -->
+  <div class="scheme-card" style="
+    background: #d0d0d0;
+    --bg: #2d3748;
+    --shadow-dark: #1a202c;
+    --shadow-light: #3d4a5c;
+    --text-color: #e2e8f0;
+    --subtitle-color: #718096;
+    --accent: #4fd1c5;
+    --header-bg: linear-gradient(145deg, #3d4a5c, #2d3748);
+    --icon-bg: linear-gradient(145deg, #4fd1c5, #38b2ac);
+    --title-color: #e2e8f0;
+  ">
+    <h3 style="color: #e2e8f0;">方案五 · 深空灰</h3>
+    <p class="tag" style="color: #718096;">Dark Space</p>
+    
+    <div class="color-palette">
+      <div><div class="color-swatch" style="background: #2d3748;"></div><p class="color-info">#2d3748</p></div>
+      <div><div class="color-swatch" style="background: #1a202c;"></div><p class="color-info">#1a202c</p></div>
+      <div><div class="color-swatch" style="background: #4fd1c5;"></div><p class="color-info">#4fd1c5</p></div>
+      <div><div class="color-swatch" style="background: #68d391;"></div><p class="color-info">#68d391</p></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon">🌙</div>
+        <div class="panel-title">
+          <h4>答题器 Pro</h4>
+          <p>v4.5.20</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="stats-row">
+          <div class="stat"><div class="num" style="color: var(--accent);">26</div><div class="lab">总题数</div></div>
+          <div class="stat"><div class="num" style="color: #68d391;">17</div><div class="lab">已答</div></div>
+          <div class="stat"><div class="num" style="color: #68d391;">15</div><div class="lab">命中</div></div>
+          <div class="stat"><div class="num" style="color: #fc8181;">2</div><div class="lab">未中</div></div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span>答题进度</span><span style="color: var(--accent);">65%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 65%; background: linear-gradient(90deg, #4fd1c5, #38b2ac);"></div></div>
+        </div>
+        <div class="status">
+          <div class="status-dot" style="background: var(--accent);"></div>
+          <div class="status-text">状态：<span>答题中</span></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" style="color: #68d391;">▶ 开始</button>
+          <button class="btn" style="color: #f6e05e;">⏸ 暂停</button>
+          <button class="btn" style="color: #fc8181;">⏹ 停止</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="scheme-desc" style="background: #1a202c; color: #718096;">
+      <strong style="color: #e2e8f0;">特点：</strong>深邃的深灰色调，低调奢华，适合夜间使用或程序员群体。
+    </div>
+  </div>
+
+  <!-- 方案6: 玫瑰金 -->
+  <div class="scheme-card" style="
+    background: #e8e8e8;
+    --bg: #faf5f5;
+    --shadow-dark: #d5ccc8;
+    --shadow-light: #ffffff;
+    --text-color: #6a5555;
+    --subtitle-color: #9a8888;
+    --accent: #ec4899;
+    --header-bg: linear-gradient(145deg, #f0e8e8, #fcfafa);
+    --icon-bg: linear-gradient(145deg, #ec4899, #db2777);
+    --title-color: #5a4545;
+  ">
+    <h3>方案六 · 玫瑰金</h3>
+    <p class="tag">Rose Gold</p>
+    
+    <div class="color-palette">
+      <div><div class="color-swatch" style="background: #faf5f5;"></div><p class="color-info">#faf5f5</p></div>
+      <div><div class="color-swatch" style="background: #d5ccc8;"></div><p class="color-info">#d5ccc8</p></div>
+      <div><div class="color-swatch" style="background: #ec4899;"></div><p class="color-info">#ec4899</p></div>
+      <div><div class="color-swatch" style="background: #f472b6;"></div><p class="color-info">#f472b6</p></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-icon">💖</div>
+        <div class="panel-title">
+          <h4>答题器 Pro</h4>
+          <p>v4.5.20</p>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="stats-row">
+          <div class="stat"><div class="num" style="color: var(--accent);">26</div><div class="lab">总题数</div></div>
+          <div class="stat"><div class="num" style="color: #10b981;">17</div><div class="lab">已答</div></div>
+          <div class="stat"><div class="num" style="color: #10b981;">15</div><div class="lab">命中</div></div>
+          <div class="stat"><div class="num" style="color: #f87171;">2</div><div class="lab">未中</div></div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-label"><span>答题进度</span><span style="color: var(--accent);">65%</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width: 65%; background: linear-gradient(90deg, #ec4899, #f472b6);"></div></div>
+        </div>
+        <div class="status">
+          <div class="status-dot" style="background: var(--accent);"></div>
+          <div class="status-text">状态：<span>答题中</span></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" style="color: #10b981;">▶ 开始</button>
+          <button class="btn" style="color: var(--accent);">⏸ 暂停</button>
+          <button class="btn" style="color: #f87171;">⏹ 停止</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="scheme-desc">
+      <strong>特点：</strong>优雅的玫瑰金色调，温柔细腻，适合女性用户或情感类应用。
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

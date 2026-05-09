@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新拟态 UI 设计方案</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: #e0e5ec;
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+
+/* ==================== 新拟态核心样式 ==================== */
+.neu-raised {
+  background: #e0e5ec;
+  box-shadow: 8px 8px 16px #b8bec7,
+              -8px -8px 16px #ffffff;
+  border-radius: 20px;
+}
+
+.neu-inset {
+  background: #e0e5ec;
+  box-shadow: inset 4px 4px 8px #b8bec7,
+              inset -4px -4px 8px #ffffff;
+  border-radius: 12px;
+}
+
+.neu-flat {
+  background: #e0e5ec;
+  box-shadow: 3px 3px 6px #b8bec7,
+              -3px -3px 6px #ffffff;
+  border-radius: 12px;
+}
+
+.neu-btn {
+  background: #e0e5ec;
+  box-shadow: 5px 5px 10px #b8bec7,
+              -5px -5px 10px #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5a6a7a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.neu-btn:hover {
+  box-shadow: 4px 4px 8px #b8bec7,
+              -4px -4px 8px #ffffff;
+}
+
+.neu-btn:active, .neu-btn.active {
+  box-shadow: inset 4px 4px 8px #b8bec7,
+              inset -4px -4px 8px #ffffff;
+}
+
+.neu-btn-primary {
+  background: linear-gradient(145deg, #f0f5fc, #d1d9e6);
+  color: #5a8dee;
+}
+
+.neu-btn-success { color: #4ade80; }
+.neu-btn-danger { color: #f87171; }
+.neu-btn-warning { color: #fbbf24; }
+
+/* ==================== 布局 ==================== */
+.container { max-width: 1200px; margin: 0 auto; }
+h1 { text-align: center; color: #5a6a7a; margin-bottom: 8px; font-weight: 300; letter-spacing: 2px; }
+.subtitle { text-align: center; color: #9ca3af; margin-bottom: 50px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 40px; }
+.card { padding: 30px; }
+.card h2 { text-align: center; color: #7a8a9a; margin-bottom: 20px; font-weight: 400; font-size: 18px; }
+.card h2 span { font-size: 12px; color: #aab; margin-left: 8px; }
+
+/* ==================== 面板1: 经典新拟态 ==================== */
+.panel-classic {
+  padding: 0;
+  overflow: hidden;
+}
+
+.classic-header {
+  background: linear-gradient(145deg, #d4d9e2, #ebeff5);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.classic-icon {
+  width: 44px; height: 44px;
+  background: linear-gradient(145deg, #5a8dee, #4a7cdd);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  color: #fff;
+  box-shadow: 4px 4px 8px #b8bec7,
+              -2px -2px 6px #ffffff;
+}
+
+.classic-title { flex: 1; }
+.classic-title h3 { font-size: 15px; font-weight: 600; color: #4a5568; }
+.classic-title p { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+.classic-badge {
+  background: #e0e5ec;
+  box-shadow: inset 2px 2px 4px #b8bec7,
+              inset -2px -2px 4px #ffffff;
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 11px; color: #7a8a9a; font-weight: 600;
+}
+
+.classic-body { padding: 20px; }
+
+/* 统计卡片 */
+.stats-row { display: flex; gap: 12px; margin-bottom: 16px; }
+.stat-card {
+  flex: 1;
+  padding: 14px 10px;
+  text-align: center;
+}
+.stat-card .num {
+  font-size: 24px;
+  font-weight: 700;
+  color: #5a8dee;
+}
+.stat-card .lab {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 进度条 */
+.progress-wrap {
+  margin-bottom: 16px;
+}
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #7a8a9a;
+  margin-bottom: 8px;
+}
+.progress-bar {
+  height: 10px;
+  background: #e0e5ec;
+  box-shadow: inset 3px 3px 6px #b8bec7,
+              inset -3px -3px 6px #ffffff;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 65%;
+  background: linear-gradient(90deg, #5a8dee, #4a7cdd);
+  border-radius: 10px;
+  box-shadow: 2px 2px 4px #b8bec7;
+}
+
+/* 按钮组 */
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ==================== 面板2: 柔和彩色 ==================== */
+.panel-soft {
+  padding: 0;
+  overflow: hidden;
+  background: #e8edf3;
+  box-shadow: 10px 10px 20px #c5cad3,
+              -10px -10px 20px #fbffff;
+}
+
+.soft-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.soft-icon {
+  width: 44px; height: 44px;
+  background: rgba(255,255,255,0.2);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  color: #fff;
+}
+
+.soft-title { flex: 1; }
+.soft-title h3 { font-size: 15px; font-weight: 600; color: #fff; }
+.soft-title p { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 2px; }
+
+.soft-badge {
+  background: rgba(255,255,255,0.2);
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 11px; color: #fff; font-weight: 600;
+}
+
+.soft-body { padding: 20px; }
+
+/* 软色统计 */
+.soft-stats {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.soft-stat {
+  padding: 12px 6px;
+  text-align: center;
+  background: #e8edf3;
+  box-shadow: 4px 4px 8px #c5cad3,
+              -4px -4px 8px #ffffff;
+  border-radius: 12px;
+}
+.soft-stat .num { font-size: 20px; font-weight: 700; }
+.soft-stat .lab { font-size: 9px; color: #9ca3af; margin-top: 3px; }
+
+.soft-stat:nth-child(1) .num { color: #667eea; }
+.soft-stat:nth-child(2) .num { color: #764ba2; }
+.soft-stat:nth-child(3) .num { color: #48bb78; }
+.soft-stat:nth-child(4) .num { color: #f56565; }
+
+/* 软色进度条 */
+.soft-progress {
+  height: 8px;
+  background: #e8edf3;
+  box-shadow: inset 2px 2px 4px #c5cad3,
+              inset -2px -2px 4px #ffffff;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.soft-fill {
+  height: 100%;
+  width: 65%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 10px;
+}
+
+/* ==================== 面板3: 深色新拟态 ==================== */
+.panel-dark {
+  padding: 0;
+  overflow: hidden;
+  background: #2d3748;
+  box-shadow: 10px 10px 20px #1a202c,
+              -10px -10px 20px #3d4a5c;
+}
+
+.dark-header {
+  background: linear-gradient(145deg, #3d4a5c, #2d3748);
+  padding: 18px 20px;
+  display: flex; align-items: center; gap: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.dark-icon {
+  width: 44px; height: 44px;
+  background: linear-gradient(145deg, #4fd1c5, #38b2ac);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  color: #1a202c;
+  box-shadow: 4px 4px 8px #1a202c,
+              -2px -2px 6px #3d4a5c;
+}
+
+.dark-title { flex: 1; }
+.dark-title h3 { font-size: 15px; font-weight: 600; color: #e2e8f0; }
+.dark-title p { font-size: 11px; color: #718096; margin-top: 2px; }
+
+.dark-badge {
+  background: #2d3748;
+  box-shadow: inset 3px 3px 6px #1a202c,
+              inset -3px -3px 6px #3d4a5c;
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 11px; color: #4fd1c5; font-weight: 600;
+}
+
+.dark-body { padding: 20px; }
+
+/* 深色统计 */
+.dark-stats {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.dark-stat {
+  padding: 12px 6px;
+  text-align: center;
+  background: #2d3748;
+  box-shadow: 4px 4px 8px #1a202c,
+              -4px -4px 8px #3d4a5c;
+  border-radius: 12px;
+}
+.dark-stat .num { font-size: 20px; font-weight: 700; }
+.dark-stat .lab { font-size: 9px; color: #718096; margin-top: 3px; }
+
+.dark-stat:nth-child(1) .num { color: #4fd1c5; }
+.dark-stat:nth-child(2) .num { color: #68d391; }
+.dark-stat:nth-child(3) .num { color: #fc8181; }
+.dark-stat:nth-child(4) .num { color: #f6e05e; }
+
+/* 深色进度 */
+.dark-progress {
+  height: 8px;
+  background: #2d3748;
+  box-shadow: inset 2px 2px 4px #1a202c,
+              inset -2px -2px 4px #3d4a5c;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.dark-fill {
+  height: 100%;
+  width: 65%;
+  background: linear-gradient(90deg, #4fd1c5, #38b2ac);
+  border-radius: 10px;
+}
+
+/* 深色按钮 */
+.dark-btn {
+  background: #2d3748;
+  box-shadow: 4px 4px 8px #1a202c,
+              -4px -4px 8px #3d4a5c;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a0aec0;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dark-btn:active {
+  box-shadow: inset 3px 3px 6px #1a202c,
+              inset -3px -3px 6px #3d4a5c;
+}
+.dark-btn-start { color: #68d391; }
+.dark-btn-stop { color: #fc8181; }
+.dark-btn-pause { color: #f6e05e; }
+
+/* ==================== 面板4: 圆形新拟态 ==================== */
+.panel-round {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 30px;
+}
+
+.round-header {
+  background: linear-gradient(145deg, #d4d9e2, #ebeff5);
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 30px 30px 0 0;
+}
+
+.round-icon {
+  width: 50px; height: 50px;
+  background: linear-gradient(145deg, #ed8936, #dd6b20);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  color: #fff;
+  box-shadow: 5px 5px 10px #b8bec7,
+              -5px -5px 10px #ffffff;
+}
+
+.round-title { flex: 1; }
+.round-title h3 { font-size: 16px; font-weight: 600; color: #4a5568; }
+.round-title p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
+
+.round-body { padding: 24px; }
+
+/* 圆形统计 */
+.round-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+.round-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 20px;
+  background: #e0e5ec;
+  box-shadow: 6px 6px 12px #b8bec7,
+              -6px -6px 12px #ffffff;
+  border-radius: 16px;
+}
+.round-stat .num {
+  font-size: 26px;
+  font-weight: 700;
+}
+.round-stat .lab {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+.round-stat:nth-child(1) .num { color: #ed8936; }
+.round-stat:nth-child(2) .num { color: #48bb78; }
+.round-stat:nth-child(3) .num { color: #e53e3e; }
+
+/* 圆形按钮 */
+.round-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px;
+  background: #e0e5ec;
+  box-shadow: 5px 5px 10px #b8bec7,
+              -5px -5px 10px #ffffff;
+  border: none;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5a6a7a;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.round-btn:last-child { margin-bottom: 0; }
+.round-btn-start { color: #48bb78; }
+.round-btn-stop { color: #e53e3e; }
+
+/* ==================== 面板5: 极简新拟态 ==================== */
+.panel-minimal {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 24px;
+  box-shadow: 12px 12px 24px #c8cdd6,
+              -12px -12px 24px #f8faff;
+}
+
+.minimal-header {
+  background: #e8edf4;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.minimal-icon {
+  width: 38px; height: 38px;
+  background: linear-gradient(145deg, #a78bfa, #8b5cf6);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  color: #fff;
+  box-shadow: 3px 3px 6px #c8cdd6,
+              -3px -3px 6px #ffffff;
+}
+
+.minimal-title { flex: 1; }
+.minimal-title h3 { font-size: 14px; font-weight: 600; color: #4a5568; }
+.minimal-title p { font-size: 10px; color: #a0aec0; }
+
+.minimal-body { padding: 18px; }
+
+.minimal-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.mini-stat {
+  flex: 1;
+  padding: 12px 8px;
+  text-align: center;
+  background: #e8edf4;
+  box-shadow: inset 3px 3px 6px #c8cdd6,
+              inset -3px -3px 6px #ffffff;
+  border-radius: 10px;
+}
+.mini-stat .num { font-size: 18px; font-weight: 700; color: #8b5cf6; }
+.mini-stat .lab { font-size: 9px; color: #a0aec0; margin-top: 2px; }
+
+.minimal-progress {
+  height: 6px;
+  background: #e8edf4;
+  box-shadow: inset 2px 2px 4px #c8cdd6,
+              inset -2px -2px 4px #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.minimal-fill {
+  height: 100%;
+  width: 65%;
+  background: linear-gradient(90deg, #a78bfa, #8b5cf6);
+  border-radius: 8px;
+}
+
+/* 极简按钮 */
+.minimal-btn {
+  flex: 1;
+  padding: 10px;
+  background: #e8edf4;
+  box-shadow: 4px 4px 8px #c8cdd6,
+              -4px -4px 8px #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7a8a9a;
+  cursor: pointer;
+}
+.minimal-btn-start { color: #48bb78; }
+.minimal-btn-stop { color: #fc8181; }
+
+/* ==================== 按钮样式覆盖 ==================== */
+.btn-start { color: #48bb78; }
+.btn-stop { color: #fc8181; }
+.btn-pause { color: #fbbf24; }
+
+/* 标签 */
+.label {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  margin-top: 14px;
+  color: #7a8a9a;
+  background: #e0e5ec;
+  box-shadow: 3px 3px 6px #b8bec7,
+              -3px -3px 6px #ffffff;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>新拟态 UI 设计</h1>
+  <p class="subtitle">Neumorphism · Soft UI · 柔和阴影 + 立体感</p>
+
+  <div class="grid">
+
+    <!-- 方案1: 经典新拟态 -->
+    <div class="card">
+      <h2>1. 经典新拟态 <span>Classic</span></h2>
+      <div class="panel-classic neu-raised">
+        <div class="classic-header">
+          <div class="classic-icon">🤖</div>
+          <div class="classic-title">
+            <h3>MinuteStars 答题器</h3>
+            <p>题库 327 条 · v4.5.6</p>
+          </div>
+        </div>
+        <div class="classic-body">
+          <div class="stats-row">
+            <div class="stat-card neu-flat">
+              <div class="num">26</div>
+              <div class="lab">总题数</div>
+            </div>
+            <div class="stat-card neu-flat">
+              <div class="num">17</div>
+              <div class="lab">已答题</div>
+            </div>
+            <div class="stat-card neu-flat">
+              <div class="num">15</div>
+              <div class="lab">命中</div>
+            </div>
+            <div class="stat-card neu-flat">
+              <div class="num">2</div>
+              <div class="lab">未命中</div>
+            </div>
+          </div>
+          <div class="progress-wrap">
+            <div class="progress-label">
+              <span>答题进度</span>
+              <span>65%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill"></div></div>
+          </div>
+          <div class="btn-row">
+            <button class="neu-btn neu-btn-primary btn-start">▶ 开始答题</button>
+            <button class="neu-btn btn-pause">⏸ 暂停</button>
+            <button class="neu-btn btn-stop">⏹ 停止</button>
+          </div>
+        </div>
+      </div>
+      <span class="label">✨ 标准新拟态 · 柔和灰蓝</span>
+    </div>
+
+    <!-- 方案2: 柔和彩色 -->
+    <div class="card">
+      <h2>2. 柔和彩色 <span>Soft Color</span></h2>
+      <div class="panel-soft">
+        <div class="soft-header">
+          <div class="soft-icon">🤖</div>
+          <div class="soft-title">
+            <h3>MinuteStars 答题器</h3>
+            <p>题库 327 条</p>
+          </div>
+          <span class="soft-badge">v4.5.6</span>
+        </div>
+        <div class="soft-body">
+          <div class="soft-stats">
+            <div class="soft-stat"><div class="num">26</div><div class="lab">总题数</div></div>
+            <div class="soft-stat"><div class="num">17</div><div class="lab">已答题</div></div>
+            <div class="soft-stat"><div class="num">15</div><div class="lab">命中</div></div>
+            <div class="soft-stat"><div class="num">2</div><div class="lab">未命中</div></div>
+          </div>
+          <div class="soft-progress"><div class="soft-fill"></div></div>
+          <div class="btn-row">
+            <button class="neu-btn" style="color:#667eea;">▶ 开始答题</button>
+            <button class="neu-btn" style="color:#764ba2;">⏸ 暂停</button>
+            <button class="neu-btn" style="color:#f56565;">⏹ 停止</button>
+          </div>
+        </div>
+      </div>
+      <span class="label">🌈 渐变头部 + 新拟态卡片</span>
+    </div>
+
+    <!-- 方案3: 深色新拟态 -->
+    <div class="card">
+      <h2>3. 深色新拟态 <span>Dark Mode</span></h2>
+      <div class="panel-dark">
+        <div class="dark-header">
+          <div class="dark-icon">🤖</div>
+          <div class="dark-title">
+            <h3>MinuteStars 答题器</h3>
+            <p>题库 327 条</p>
+          </div>
+          <span class="dark-badge">v4.5.6</span>
+        </div>
+        <div class="dark-body">
+          <div class="dark-stats">
+            <div class="dark-stat"><div class="num">26</div><div class="lab">总题数</div></div>
+            <div class="dark-stat"><div class="num">17</div><div class="lab">已答题</div></div>
+            <div class="dark-stat"><div class="num">15</div><div class="lab">命中</div></div>
+            <div class="dark-stat"><div class="num">2</div><div class="lab">未命中</div></div>
+          </div>
+          <div class="dark-progress"><div class="dark-fill"></div></div>
+          <div class="btn-row">
+            <button class="dark-btn dark-btn-start">▶ 开始答题</button>
+            <button class="dark-btn dark-btn-pause">⏸ 暂停</button>
+            <button class="dark-btn dark-btn-stop">⏹ 停止</button>
+          </div>
+        </div>
+      </div>
+      <span class="label">🌙 深色背景 · 青色强调</span>
+    </div>
+
+    <!-- 方案4: 圆形新拟态 -->
+    <div class="card">
+      <h2>4. 圆形新拟态 <span>Round</span></h2>
+      <div class="panel-round neu-raised">
+        <div class="round-header">
+          <div class="round-icon">🤖</div>
+          <div class="round-title">
+            <h3>MinuteStars 答题器</h3>
+            <p>题库 327 条 · v4.5.6</p>
+          </div>
+        </div>
+        <div class="round-body">
+          <div class="round-stats">
+            <div class="round-stat">
+              <div class="num">26</div>
+              <div class="lab">总题数</div>
+            </div>
+            <div class="round-stat">
+              <div class="num">17</div>
+              <div class="lab">已答题</div>
+            </div>
+            <div class="round-stat">
+              <div class="num">15</div>
+              <div class="lab">命中</div>
+            </div>
+          </div>
+          <button class="round-btn round-btn-start">▶ 开始答题</button>
+          <button class="round-btn round-btn-stop">⏹ 停止答题</button>
+        </div>
+      </div>
+      <span class="label">⭕ 大圆角 · 更柔和</span>
+    </div>
+
+    <!-- 方案5: 极简新拟态 -->
+    <div class="card">
+      <h2>5. 极简新拟态 <span>Minimal</span></h2>
+      <div class="panel-minimal">
+        <div class="minimal-header">
+          <div class="minimal-icon">🤖</div>
+          <div class="minimal-title">
+            <h3>MinuteStars 答题器</h3>
+            <p>题库 327 条</p>
+          </div>
+        </div>
+        <div class="minimal-body">
+          <div class="minimal-row">
+            <div class="mini-stat"><div class="num">26</div><div class="lab">总题数</div></div>
+            <div class="mini-stat"><div class="num">17</div><div class="lab">已答</div></div>
+            <div class="mini-stat"><div class="num">15</div><div class="lab">命中</div></div>
+            <div class="mini-stat"><div class="num">2</div><div class="lab">未中</div></div>
+          </div>
+          <div class="minimal-progress"><div class="minimal-fill"></div></div>
+          <div class="minimal-row">
+            <button class="minimal-btn minimal-btn-start">▶ 开始</button>
+            <button class="minimal-btn" style="color:#f6e05e;">⏸ 暂停</button>
+            <button class="minimal-btn minimal-btn-stop">⏹ 停止</button>
+          </div>
+        </div>
+      </div>
+      <span class="label">⬜ 内凹设计 · 更轻量</span>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

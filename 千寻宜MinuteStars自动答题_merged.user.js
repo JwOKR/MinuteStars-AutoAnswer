@@ -5,6 +5,10 @@
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 错题本复习模式 + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
+// @match        *://*.xuexiqiangguo.cn/*
+// @match        *://*.chaoxing.com/*
+// @match        *://*.zhihuishu.com/*
+// @match        *://*.zhidao.com/*
 // @match        *://localhost/*
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -1092,10 +1096,86 @@
       CFG.aiEnable = false; saveCFG();
     }
     return null;
+    return null;
   }
 
   /* =========================================================
-     GitHub Gist 云同步
+     多平台适配器（v4.8.0 Phase3 多平台扩展）
+     自动检测当前平台，返回平台专用选择器 + 答题逻辑
+  ========================================================= */
+  const PlatformAdapter = {
+    /** 检测当前平台 */
+    getPlatform() {
+      const host = location.hostname;
+      if (/minutestars/.test(host)) return 'minutestars';
+      if (/xuexiqiangguo/.test(host)) return 'xuexiqiangguo';
+      if (/chaoxing/.test(host)) return 'chaoxing';
+      if (/zhihuishu/.test(host)) return 'zhihuishu';
+      if (/zhidao/.test(host)) return 'zhidao';
+      return 'unknown';
+    },
+
+    /** 获取平台配置（选择器 + 特性） */
+    getConfig() {
+      const platform = this.getPlatform();
+      const cfg = {
+        minutestars: {
+          name: 'MinuteStars',
+          questionSel: '.question-text, .title, .q-title',
+          answerSel: 'input[type="radio"], input[type="checkbox"]',
+          submitSel: 'button:contains("提交"), button:contains("确定"), .submit-btn',
+          multiAnswer: true,
+        },
+        xuexiqiangguo: {
+          name: '学习强国',
+          questionSel: '.question, .title, .q-title, .problem',
+          answerSel: 'input[type="radio"], input[type="checkbox"]',
+          submitSel: 'button:contains("提交"), button:contains("下一题"), .btn-submit',
+          multiAnswer: false,
+        },
+        chaoxing: {
+          name: '超星泛雅',
+          questionSel: '.question-text, .title, .q-title, .timu',
+          answerSel: 'input[type="radio"], input[type="checkbox"]',
+          submitSel: 'button:contains("提交"), button:contains("保存"), .submit-btn',
+          multiAnswer: true,
+        },
+        zhihuishu: {
+          name: '智慧树',
+          questionSel: '.question, .title, .q-title, .timu-title',
+          answerSel: 'input[type="radio"], input[type="checkbox"]',
+          submitSel: 'button:contains("提交"), button:contains("下一页"), .submit-btn',
+          multiAnswer: false,
+        },
+        zhidao: {
+          name: '知到',
+          questionSel: '.question-text, .title, .q-title',
+          answerSel: 'input[type="radio"], input[type="checkbox"]',
+          submitSel: 'button:contains("提交"), button:contains("确定"), .submit-btn',
+          multiAnswer: false,
+        },
+      };
+      return cfg[platform] || null;
+    },
+
+    /** 获取当前题目文本（平台自适应） */
+    getQuestionText() {
+      const config = this.getConfig();
+      if (!config) return null;
+      const el = document.querySelector(config.questionSel);
+      return el ? el.textContent.trim() : null;
+    },
+
+    /** 获取当前答案输入框（平台自适应） */
+    getAnswerInputs() {
+      const config = this.getConfig();
+      if (!config) return [];
+      return [...document.querySelectorAll(config.answerSel)];
+    },
+  };
+
+  /* =========================================================
+      GitHub Gist 云同步
      ⚡ v4.5.39：题库上传下载到 GitHub Gist
   ========================================================= */
   function gistUrl(id) {

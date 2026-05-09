@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>极简新拟态 UI - Minimalist Neumorphism</title>
+  <style>
+    :root {
+      --bg: #FFFFFF;
+      --shadow-light: #FFFFFF;
+      --shadow-dark: #E6E6E6;
+      --text: #1A1A1A;
+      --text-secondary: #888888;
+      --accent: #333333;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 20px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+    }
+
+    /* 极简阴影效果 */
+    .nm-raised {
+      background: var(--bg);
+      border-radius: 2px;
+      box-shadow: 
+        1px 1px 2px var(--shadow-dark),
+        -1px -1px 2px var(--shadow-light);
+    }
+
+    .nm-inset {
+      background: var(--bg);
+      border-radius: 2px;
+      box-shadow: 
+        inset 1px 1px 2px var(--shadow-dark),
+        inset -1px -1px 2px var(--shadow-light);
+    }
+
+    /* 卡片 */
+    .card {
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    /* 按钮 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 24px;
+      background: var(--bg);
+      border: none;
+      border-radius: 2px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      box-shadow: 
+        1px 1px 3px var(--shadow-dark),
+        -1px -1px 3px var(--shadow-light);
+      transition: box-shadow 0.15s ease;
+    }
+
+    .btn:hover {
+      box-shadow: 
+        2px 2px 4px var(--shadow-dark),
+        -2px -2px 4px var(--shadow-light);
+    }
+
+    .btn:active, .btn.active {
+      box-shadow: 
+        inset 1px 1px 2px var(--shadow-dark),
+        inset -1px -1px 2px var(--shadow-light);
+    }
+
+    /* 输入框 */
+    .input {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg);
+      border: none;
+      border-radius: 2px;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      box-shadow: 
+        inset 1px 1px 2px var(--shadow-dark),
+        inset -1px -1px 2px var(--shadow-light);
+    }
+
+    .input::placeholder {
+      color: var(--text-secondary);
+    }
+
+    /* 切换开关 */
+    .toggle {
+      width: 48px;
+      height: 28px;
+      background: var(--bg);
+      border-radius: 14px;
+      cursor: pointer;
+      position: relative;
+      box-shadow: 
+        inset 1px 1px 3px var(--shadow-dark),
+        inset -1px -1px 3px var(--shadow-light);
+      transition: all 0.2s ease;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 22px;
+      height: 22px;
+      background: var(--bg);
+      border-radius: 50%;
+      box-shadow: 
+        1px 1px 2px var(--shadow-dark),
+        -1px -1px 2px var(--shadow-light);
+      transition: transform 0.2s ease;
+    }
+
+    .toggle.on {
+      background: #F5F5F5;
+    }
+
+    .toggle.on::after {
+      transform: translateX(20px);
+      background: var(--text);
+      box-shadow: none;
+    }
+
+    /* 分隔线 */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--shadow-dark), transparent);
+      margin: 24px 0;
+    }
+
+    /* 列表项 */
+    .list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 0;
+    }
+
+    .list-item:not(:last-child) {
+      border-bottom: 1px solid #F0F0F0;
+    }
+
+    .list-item-label {
+      font-size: 14px;
+    }
+
+    /* 进度条 */
+    .progress {
+      height: 4px;
+      background: var(--bg);
+      border-radius: 2px;
+      overflow: hidden;
+      box-shadow: 
+        inset 1px 1px 2px var(--shadow-dark),
+        inset -1px -1px 2px var(--shadow-light);
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--text);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    /* 标签 */
+    .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      border-radius: 2px;
+      background: var(--bg);
+      box-shadow: 
+        1px 1px 2px var(--shadow-dark),
+        -1px -1px 2px var(--shadow-light);
+    }
+
+    /* 演示区块 */
+    .demo-section {
+      margin-bottom: 32px;
+    }
+
+    .demo-label {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    /* 按钮组 */
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn-icon {
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      font-size: 18px;
+    }
+
+    /* 圆环进度 */
+    .circle-progress {
+      width: 80px;
+      height: 80px;
+      background: var(--bg);
+      border-radius: 50%;
+      position: relative;
+      box-shadow: 
+        inset 2px 2px 4px var(--shadow-dark),
+        inset -2px -2px 4px var(--shadow-light);
+    }
+
+    .circle-progress::after {
+      content: '';
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      background: var(--bg);
+      border-radius: 50%;
+      box-shadow: 
+        1px 1px 3px var(--shadow-dark),
+        -1px -1px 3px var(--shadow-light);
+    }
+
+    .circle-progress-inner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 16px;
+      font-weight: 600;
+      z-index: 1;
+    }
+
+    /* 滑块 */
+    .slider-track {
+      width: 100%;
+      height: 4px;
+      background: var(--bg);
+      border-radius: 2px;
+      position: relative;
+      box-shadow: 
+        inset 1px 1px 2px var(--shadow-dark),
+        inset -1px -1px 2px var(--shadow-light);
+    }
+
+    .slider-thumb {
+      width: 20px;
+      height: 20px;
+      background: var(--bg);
+      border-radius: 50%;
+      position: absolute;
+      top: 50%;
+      left: 30%;
+      transform: translate(-50%, -50%);
+      box-shadow: 
+        1px 1px 3px var(--shadow-dark),
+        -1px -1px 3px var(--shadow-light);
+      cursor: grab;
+    }
+
+    .slider-thumb:active {
+      cursor: grabbing;
+      box-shadow: 
+        inset 1px 1px 2px var(--shadow-dark),
+        inset -1px -1px 2px var(--shadow-light);
+    }
+
+    /* 复选框 */
+    .checkbox {
+      width: 20px;
+      height: 20px;
+      background: var(--bg);
+      border-radius: 2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: transparent;
+      box-shadow: 
+        inset 1px 1px 2px var(--shadow-dark),
+        inset -1px -1px 2px var(--shadow-light);
+      transition: all 0.15s ease;
+    }
+
+    .checkbox.checked {
+      color: var(--text);
+      box-shadow: 
+        1px 1px 2px var(--shadow-dark),
+        -1px -1px 2px var(--shadow-light);
+    }
+
+    /* 颜色展示 */
+    .color-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .color-swatch {
+      width: 32px;
+      height: 32px;
+      border-radius: 2px;
+      box-shadow: 
+        1px 1px 2px var(--shadow-dark),
+        -1px -1px 2px var(--shadow-light);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>极简新拟态</h1>
+    <p class="subtitle">Minimalist Neumorphism · 极致的克制与留白</p>
+
+    <!-- 按钮 -->
+    <div class="demo-section">
+      <div class="demo-label">按钮 Button</div>
+      <div class="btn-group">
+        <button class="btn active">确认</button>
+        <button class="btn">取消</button>
+        <button class="btn btn-icon">+</button>
+      </div>
+    </div>
+
+    <!-- 输入框 -->
+    <div class="demo-section">
+      <div class="demo-label">输入框 Input</div>
+      <div class="card nm-inset">
+        <input type="text" class="input" placeholder="输入内容...">
+      </div>
+    </div>
+
+    <!-- 切换开关 -->
+    <div class="demo-section">
+      <div class="demo-label">开关 Toggle</div>
+      <div class="card nm-raised">
+        <div class="list-item">
+          <span class="list-item-label">深色模式</span>
+          <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="list-item">
+          <span class="list-item-label">静音模式</span>
+          <div class="toggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="demo-section">
+      <div class="demo-label">进度条 Progress</div>
+      <div class="card nm-inset">
+        <div style="margin-bottom: 12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="font-size:12px;">已完成</span>
+            <span style="font-size:12px;color:var(--text-secondary);">72%</span>
+          </div>
+          <div class="progress">
+            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;">圆环进度</span>
+          <div class="circle-progress">
+            <span class="circle-progress-inner">72</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 滑块 -->
+    <div class="demo-section">
+      <div class="demo-label">滑块 Slider</div>
+      <div class="card nm-inset" style="padding: 24px 16px;">
+        <div class="slider-track">
+          <div class="slider-thumb" id="sliderThumb"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 复选框 -->
+    <div class="demo-section">
+      <div class="demo-label">复选框 Checkbox</div>
+      <div class="card nm-raised">
+        <div class="list-item">
+          <span class="list-item-label">接收通知</span>
+          <div class="checkbox checked" onclick="this.classList.toggle('checked')">✓</div>
+        </div>
+        <div class="list-item">
+          <span class="list-item-label">自动同步</span>
+          <div class="checkbox" onclick="this.classList.toggle('checked')">✓</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 标签 -->
+    <div class="demo-section">
+      <div class="demo-label">标签 Tag</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="tag">设计</span>
+        <span class="tag">极简</span>
+        <span class="tag">新拟态</span>
+      </div>
+    </div>
+
+    <!-- 色彩系统 -->
+    <div class="demo-section">
+      <div class="demo-label">色彩系统 Color</div>
+      <div class="card nm-raised">
+        <div class="color-row">
+          <div class="color-swatch" style="background:#FFFFFF;box-shadow:1px 1px 2px #E0E0E0,-1px -1px 2px #FFFFFF;"></div>
+          <div class="color-swatch" style="background:#FAFAFA;"></div>
+          <div class="color-swatch" style="background:#F5F5F5;"></div>
+          <div class="color-swatch" style="background:#E8E8E8;"></div>
+          <div class="color-swatch" style="background:#1A1A1A;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- 设计理念 -->
+    <div style="font-size:12px;color:var(--text-secondary);">
+      <strong style="color:var(--text);display:block;margin-bottom:8px;">极简新拟态特征</strong>
+      · 背景：纯白 (#FFFFFF)<br>
+      · 阴影：极细 (1px offset, 2-3px blur)<br>
+      · 圆角：几乎直角 (0-2px)<br>
+      · 色彩：纯单色系<br>
+      · 强调：极致的整洁与留白
+    </div>
+  </div>
+
+  <script>
+    // 进度条动画
+    setTimeout(() => {
+      document.getElementById('progressBar').style.width = '72%';
+    }, 300);
+
+    // 滑块交互
+    const sliderThumb = document.getElementById('sliderThumb');
+    const sliderTrack = document.querySelector('.slider-track');
+    let isDragging = false;
+
+    function updateSlider(e) {
+      const rect = sliderTrack.getBoundingClientRect();
+      let percent = ((e.clientX || e.touches[0].clientX) - rect.left) / rect.width * 100;
+      percent = Math.max(0, Math.min(100, percent));
+      sliderThumb.style.left = percent + '%';
+    }
+
+    sliderThumb.addEventListener('mousedown', () => isDragging = true);
+    document.addEventListener('mouseup', () => isDragging = false);
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) updateSlider(e);
+    });
+
+    sliderThumb.addEventListener('touchstart', () => isDragging = true);
+    document.addEventListener('touchend', () => isDragging = false);
+    document.addEventListener('touchmove', (e) => {
+      if (isDragging) updateSlider(e);
+    });
+  </script>
+</body>
+</html>
