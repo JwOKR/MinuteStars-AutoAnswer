@@ -1,4 +1,10 @@
 # Changelog
+## v4.8.15
+### 🐛 修复
+- **修复分享到 Gitee Gist 失败（HTTP 400 Bad Request）**
+  - POST 创建 Gist 时 payload 缺少 `description` 字段，Gitee API 要求必须提供
+  - 加上 `description: 'MinuteStars 题库分享（${count} 题）'`
+
 ## v4.8.14
 ### 🐛 修复
 - **修复点击「导入分享」tab 报错 `Cannot read properties of null (reading 'classList')`**
