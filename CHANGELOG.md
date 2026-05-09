@@ -1,4 +1,9 @@
 # Changelog
+## v4.8.9
+### 🐛 修复
+- **修复 `_cache is not defined` 错误**：添加 `_cache` 变量初始化（`raw/dirty/userCount/dirtyKeys/cleanMap/ngramIndex/lenBuckets`）
+- 修复导致 `ReferenceError: _cache is not defined` 的脚本崩溃问题
+
 ## v4.8.8
 ### 🐛 修复
 - **修复脚本语法错误**：删除第 2895 行孤立的 `l);`，添加正确的 `document.body.appendChild(modal);`
