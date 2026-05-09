@@ -1,4 +1,12 @@
 # Changelog
+## v4.8.6
+### ✨ 新功能
+- **支持无 Token 匿名读取公开 Gist**：下载/导入题库不再强制要求 Token，只需填写 Gist ID（Gist 需设为公开）
+- **Token 输入框提示更新**：placeholder 改为"Gitee 私人令牌（仅上传需要）"，并增加说明文字
+
+### 🔧 优化
+- `fetchCloudDB()`、`cloudDownload()`、`cloudImport()` 移除 Token 强制校验，匿名读取公开 Gist
+
 ## v4.8.5
 ### ⚙️ 配置调整
 - **答题模式默认改为云端**：`cloudReadMode: 'local'` → `'cloud'`（直读云端答题，不落地）

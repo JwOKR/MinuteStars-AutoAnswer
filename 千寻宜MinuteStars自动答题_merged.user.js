@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.5
+// @version      4.8.6
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -698,7 +698,7 @@
   async function fetchCloudDB() {
     const now = Date.now();
     if (_cloudCache && (now - _cloudCacheTime) < _CLOUD_CACHE_TTL) return _cloudCache;
-    if (!CFG.cloudSyncEnable || !CFG.cloudToken || !CFG.cloudGistId) return null;
+    if (!CFG.cloudSyncEnable || !CFG.cloudGistId) return null;
     try {
       const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
       const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
@@ -1526,8 +1526,8 @@
 
   /** 从 Gist 下载题库（覆盖本地：云端为唯一权威来源） */
   async function cloudDownload() {
-    if (!CFG.cloudSyncEnable || !CFG.cloudToken || !CFG.cloudGistId) {
-      uLog('⚠️ 请先在设置中填写 Token 和 Gist ID', 'warn'); return false;
+    if (!CFG.cloudSyncEnable || !CFG.cloudGistId) {
+      uLog('⚠️ 请先在设置中填写 Gist ID 并开启云同步', 'warn'); return false;
     }
     uLog('⬇️ 正在下载题库（云端覆盖本地）…', 'info');
     try {
@@ -1557,8 +1557,8 @@
 
   /** 从 Gist 导入题库（追加到本地：云端有则用云端，本地有则保留本地） */
   async function cloudImport() {
-    if (!CFG.cloudSyncEnable || !CFG.cloudToken || !CFG.cloudGistId) {
-      uLog('⚠️ 请先在设置中填写 Token 和 Gist ID', 'warn'); return false;
+    if (!CFG.cloudSyncEnable || !CFG.cloudGistId) {
+      uLog('⚠️ 请先在设置中填写 Gist ID 并开启云同步', 'warn'); return false;
     }
     uLog('☁ 正在导入云端题库（追加到本地）…', 'info');
     try {
@@ -2584,7 +2584,8 @@
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">Token</span>
-          <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="Gitee 私人令牌" style="width:100%;box-sizing:border-box">
+          <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="Gitee 私人令牌（仅上传需要）" style="width:100%;box-sizing:border-box">
+          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 仅上传需要 Token；下载/导入可留空（Gist 需设为公开）</div>
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">Gist ID</span>
