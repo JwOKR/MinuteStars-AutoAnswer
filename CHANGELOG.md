@@ -1,4 +1,12 @@
 # Changelog
+## v4.8.12
+### 🐛 修复
+- **修复题库管理面板显示位置异常**：恢复正确的居中浮窗样式
+  - `#ata-lib-modal` 改为 `position:fixed; top:50%; left:50%; transform:translate(-50%,-50%)`
+  - 移除错误的覆盖层样式（`top:0;left:0;right:0;bottom:0`）
+  - 删除孤立的 CSS 块（无选择器的样式代码）
+  - 添加 `#ata-lib-modal.show { display:flex !important; }` 控制显示/隐藏
+
 ## v4.8.11
 ### 🐛 修复
 - **修正题库来源定义**：按用户定义重新划分来源
