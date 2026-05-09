@@ -15,6 +15,8 @@
 - **多模型切换**：UI 新增模型选择器（DeepSeek / OpenAI / Claude / Gemini）
 - **模型配置独立保存**：切换模型时自动加载对应 API Key / Endpoint
 - **请求格式自适应**：根据模型自动构建正确请求（OpenAI 兼容 / Claude / Gemini）
+- **AI 答案验证**：用 AI 验证题库答案的正确性（新增 `aiValidateAnswer`）
+- **AI 错题分析**：分析错题原因并给出学习建议（新增 `aiAnalyzeWrongAnswer`）
 
 ## v4.7.0
 

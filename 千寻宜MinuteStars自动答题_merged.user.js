@@ -1175,6 +1175,110 @@
   };
 
   /* =========================================================
+     AI 答案验证 + 错题分析（v4.8.0 Phase3）
+     - aiValidateAnswer：用 AI 验证题库答案是否正确
+     - aiAnalyzeWrongAnswer：分析错题原因并给出学习建议
+  ========================================================= */
+  async function aiValidateAnswer(question, answer, inputs) {
+    if (!CFG.aiEnable || !CFG.aiModel) return null;
+    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
+    if (!apiKey) return null;
+
+    const optTexts = inputs.map(i => {
+      const label = i.closest('label') || i.parentElement;
+      return label ? label.textContent.replace(/\s+/g, ' ').trim() : (i.value || '');
+    });
+    const prompt = `请验证以下题目的正确答案是否正确：
+
+题目：${question}
+选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}
+题库答案：${answer}
+
+请判断题库答案是否正确。如果正确回复"正确"，如果错误回复"错误：正确答案应为 X"，其中 X 是正确选项字母。`;
+
+    try {
+      const resp = await aiMatch(question, inputs); // 复用 aiMatch 的 AI 请求逻辑
+      if (!resp) {
+        // 直接调用 AI API
+        const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
+        const modelName = modelCfg.model || '';
+        const requestBody = JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 64,
+          temperature: 0.1,
+        });
+        const data = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', endpoint, true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
+          xhr.timeout = 15000;
+          xhr.onload = () => resolve(JSON.parse(xhr.responseText));
+          xhr.onerror = () => reject(new Error('网络错误'));
+          xhr.ontimeout = () => reject(new Error('超时'));
+          xhr.send(requestBody);
+        });
+        const content = (data.choices?.[0]?.message?.content || '').trim();
+        return content.includes('正确') ? { valid: true, message: content } : { valid: false, message: content };
+      }
+      return { valid: true, message: 'AI 已匹配答案 ' + resp };
+    } catch (e) {
+      uLog('🤖 AI 验证失败: ' + e.message, 'warn');
+      return null;
+    }
+  }
+
+  async function aiAnalyzeWrongAnswer(question, userAnswer, correctAnswer) {
+    if (!CFG.aiEnable || !CFG.aiModel) return null;
+    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
+    if (!apiKey) return null;
+
+    const prompt = `请分析这道错题：
+
+题目：${question}
+我的答案：${userAnswer || '未作答'}
+正确答案：${correctAnswer}
+
+请简要分析：
+1. 我为什么答错了？
+2. 正确的解题思路是什么？
+3. 相关知识点有哪些？
+4. 如何避免再犯类似错误？
+
+请用简洁的中文回答，每个问题不超过 50 字。`;
+
+    try {
+      const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
+      const modelName = modelCfg.model || '';
+      const requestBody = JSON.stringify({
+        model: modelName,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 256,
+        temperature: 0.3,
+      });
+      const data = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', endpoint, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
+        xhr.timeout = 20000;
+        xhr.onload = () => resolve(JSON.parse(xhr.responseText));
+        xhr.onerror = () => reject(new Error('网络错误'));
+        xhr.ontimeout = () => reject(new Error('超时'));
+        xhr.send(requestBody);
+      });
+      const content = (data.choices?.[0]?.message?.content || '').trim();
+      return content;
+    } catch (e) {
+      uLog('🤖 AI 分析失败: ' + e.message, 'warn');
+      return null;
+    }
+  }
+
+  /* =========================================================
       GitHub Gist 云同步
      ⚡ v4.5.39：题库上传下载到 GitHub Gist
   ========================================================= */
