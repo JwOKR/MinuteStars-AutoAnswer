@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.8.2
+
+### 🗑 移除功能
+- **移除复习模式**：删除 WrongQuestionManager、复习模式弹窗及相关 UI
+- **移除排行榜功能**：删除排行榜按钮及相关代码
+
+### 🐛 修复
+- 清理复习模式相关 CSS、HTML、JavaScript 代码
+- 注释掉 WrongQuestionManager.add 调用
+- 更新 @description，移除"错题本复习模式"描述
+
 ## v4.8.1
 
 ### ✨ 新功能（StorageManager 五大优化）
