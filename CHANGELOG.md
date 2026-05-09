@@ -1,4 +1,9 @@
 # Changelog
+## v4.8.8
+### 🐛 修复
+- **修复脚本语法错误**：删除第 2895 行孤立的 `l);`，添加正确的 `document.body.appendChild(modal);`
+- 修复导致脚本无法运行的 `Uncaught SyntaxError: Unexpected token ')'` 错误
+
 ## v4.8.7
 ### 🐛 修复
 - **修复题库来源显示错误**：本地导入的题库不再显示为云端题库
