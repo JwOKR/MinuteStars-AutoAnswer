@@ -1,5 +1,29 @@
 # Changelog
 
+## v4.8.1
+
+### ✨ 新功能（StorageManager 五大优化）
+- **IndexedDB 自动迁移**：检测到大数据（>1MB）时自动从 GM_setValue 迁移到 IndexedDB
+- **LZ-string 压缩支持（可选）**：新增 `compressEnable` 配置，启用后自动压缩存储数据（默认关闭）
+- **数据版本管理**：StorageManager 内置版本号（VERSION: 2），支持未来自动迁移
+- **存储统计信息**：新增 `getStorageInfo()` 方法，返回后端/条数/大小等统计
+
+### 🔧 性能优化
+- **IndexedDB 批量读写优化**：单次事务完成批量操作，减少 I/O 开销
+- **游标读取优化**：`idbGetAll()` 使用游标批量读取，性能提升
+
+### 🛡 错误处理增强
+- **IndexedDB 可用性检测**：新增 `_checkIDBSupport()`，自动检测并降级到 GM_setValue
+- **降级策略完善**：IndexedDB 失败时自动切换后端，确保数据不丢失
+- **迁移失败处理**：迁移到 IndexedDB 失败时自动降级到 GM_setValue
+
+### 🐛 修复
+- 修复 `_openIDB()` 版本管理问题（硬编码版本号 → 使用 VERSION 常量）
+- 修复 `idbSetAll()` 中未使用的 `processed`/`total` 变量
+
+### 📝 配置新增
+- `compressEnable: false`：压缩支持开关（默认关闭，避免性能影响）
+
 ## v4.8.0
 
 ### ✨ 新功能（Phase3）

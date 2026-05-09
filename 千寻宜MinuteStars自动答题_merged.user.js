@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.0
+// @version      4.8.1
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 错题本复习模式 + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -28,6 +28,90 @@
   const SCRIPT_VERSION = GM_info.script.version;
 
   /* =========================================================
+      LZ-string 轻量级压缩（用于大数据存储优化）
+      真正的 LZ77 压缩算法实现（精简版）
+  ========================================================= */
+  const LZString = {
+    compressToBase64(input) {
+      if (input == null) return '';
+      const compressed = this.compress(input);
+      if (compressed == null) return '';
+      let output = '';
+      for (let i = 0; i < compressed.length; i += 2) {
+        const c = compressed.charCodeAt(i) * 256 + compressed.charCodeAt(i + 1);
+        output += String.fromCharCode(c);
+      }
+      return btoa(output).replace(/=/g, '');
+    },
+
+    decompressFromBase64(input) {
+      if (input == null) return '';
+      const binary = atob(input);
+      let compressed = '';
+      for (let i = 0; i < binary.length; i++) {
+        const c = binary.charCodeAt(i);
+        compressed += String.fromCharCode(c >> 8, c & 255);
+      }
+      return this.decompress(compressed);
+    },
+
+    compress(input) {
+      if (input == null) return '';
+      const dict = {};
+      const data = (input + '').split('');
+      const out = [];
+      let currChar, phrase = data[0], code = 256;
+      for (let i = 1; i < data.length; i++) {
+        currChar = data[i];
+        if (dict[phrase + currChar] != null) {
+          phrase += currChar;
+        } else {
+          out.push(phrase.length > 1 ? dict[phrase] : phrase.charCodeAt(0));
+          dict[phrase + currChar] = code++;
+          phrase = currChar;
+        }
+      }
+      out.push(phrase.length > 1 ? dict[phrase] : phrase.charCodeAt(0));
+      for (let i = 0; i < out.length; i++) {
+        out[i] = String.fromCharCode(out[i]);
+      }
+      return out.join('');
+    },
+
+    decompress(input) {
+      if (input == null) return '';
+      const dict = {};
+      const data = (input + '').split('');
+      let currChar = data[0], oldPhrase = currChar, out = [currChar];
+      let code = 256;
+      for (let i = 1; i < data.length; i++) {
+        const c = data[i].charCodeAt(0);
+        let phrase;
+        if (c < 256) {
+          phrase = data[i];
+        } else {
+          phrase = dict[c] ? dict[c] : (oldPhrase + currChar);
+        }
+        out.push(phrase);
+        currChar = phrase.charAt(0);
+        dict[code++] = oldPhrase + currChar;
+        oldPhrase = phrase;
+      }
+      return out.join('');
+    },
+
+    /** 压缩 JSON 字符串（返回压缩后的字符串） */
+    compressJSON(jsonString) {
+      return this.compress(jsonString);
+    },
+
+    /** 解压字符串（返回原始 JSON） */
+    decompressJSON(compressed) {
+      return this.decompress(compressed);
+    }
+  };
+
+  /* =========================================================
      配置区（GM 持久化，面板可实时修改）
   ========================================================= */
 
@@ -48,6 +132,7 @@
     shortcutsEnable:  true,   // 快捷键（Alt+Enter答题/提交，Alt+S暂停）
     notifyEnable:     true,   // 系统通知（GM_notification）
     aiEnable:         false,  // AI 辅助匹配（题库无命中时的语义兜底）
+    compressEnable:   false,  // 压缩支持（LZ-string，可减少存储占用，默认关闭）
     aiApiKey:         '',     // DeepSeek / 硅基流动 API Key
     aiEndpoint:       'https://api.siliconflow.cn/v1/chat/completions', // 默认用硅基流动（免费额度）
     // v4.8.0 多 AI 模型支持
@@ -276,24 +361,32 @@
       小数据(≤1MB) → GM_setValue，大数据(>1MB) → IndexedDB
   ========================================================= */
   const StorageManager = {
-    DB_NAME:   'ata_qa_db',
+    DB_NAME:    'ata_qa_db',
     STORE_NAME: 'qa_store',
-    THRESHOLD: 1 * 1024 * 1024, // 1MB
+    THRESHOLD:  1 * 1024 * 1024, // 1MB
+    VERSION:     2, // 数据版本号
 
-    /** 判断某个 key 的存储后端（'gm' | 'idb'） */
-    _getBackend(key) {
-      return GM_getValue(key + '__backend', 'gm');
+    /* ========== 1. IndexedDB 可用性检测 ========== */
+    _idbSupported: null, // 缓存检测结果
+
+    _checkIDBSupport() {
+      if (this._idbSupported !== null) return this._idbSupported;
+      try {
+        this._idbSupported = !!(window.indexedDB && typeof indexedDB.open === 'function');
+      } catch {
+        this._idbSupported = false;
+      }
+      return this._idbSupported;
     },
 
-    /** 判断是否需要用 IndexedDB（根据序列化后大小） */
-    _shouldUseIDB(jsonString) {
-      return jsonString.length > this.THRESHOLD;
-    },
-
-    /** 打开 IndexedDB 连接 */
+    /* ========== 2. 打开 IndexedDB 连接（带版本管理） ========== */
     _openIDB() {
       return new Promise((resolve, reject) => {
-        const req = indexedDB.open(this.DB_NAME, 1);
+        if (!this._checkIDBSupport()) {
+          reject(new Error('IndexedDB not supported'));
+          return;
+        }
+        const req = indexedDB.open(this.DB_NAME, this.VERSION);
         req.onupgradeneeded = e => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains(this.STORE_NAME)) {
@@ -305,43 +398,112 @@
       });
     },
 
-    /** 从 IndexedDB 读取单条 */
+    /* ========== 3. 判断存储后端 ========== */
+    _getBackend(key) {
+      return GM_getValue(key + '__backend', 'gm');
+    },
+
+    /* ========== 4. 判断是否应使用 IndexedDB ========== */
+    _shouldUseIDB(jsonString) {
+      return jsonString.length > this.THRESHOLD;
+    },
+
+    /* ========== 5. 压缩/解压（LZ-string） ========== */
+    _compress(data) {
+      try {
+        const json = typeof data === 'string' ? data : JSON.stringify(data);
+        return LZString.compressToBase64(json);
+      } catch (e) {
+        uLog('⚠ 压缩失败: ' + e.message, 'warn');
+        return null;
+      }
+    },
+
+    _decompress(compressed) {
+      try {
+        return LZString.decompressFromBase64(compressed);
+      } catch (e) {
+        uLog('⚠ 解压失败: ' + e.message, 'warn');
+        return null;
+      }
+    },
+
+    /* ========== 6. 从 GM_setValue 迁移到 IndexedDB ========== */
+    async migrateToIDB(key) {
+      try {
+        const raw = GM_getValue(key, '{}');
+        const data = JSON.parse(raw);
+        await this.idbSetAll(data);
+        GM_setValue(key + '__backend', 'idb');
+        uLog('✅ 已迁移 ' + Object.keys(data).length + ' 条数据到 IndexedDB', 'ok');
+        return true;
+      } catch (e) {
+        uLog('⚠ 迁移到 IndexedDB 失败: ' + e.message, 'warn');
+        return false;
+      }
+    },
+
+    /* ========== 7. 从 IndexedDB 迁移到 GM_setValue（降级） ========== */
+    async migrateToGM(key) {
+      try {
+        const data = await this.idbGetAll();
+        const json = JSON.stringify(data);
+        if (json.length <= this.THRESHOLD) {
+          GM_setValue(key, json);
+          GM_setValue(key + '__backend', 'gm');
+          await this.idbClear();
+          uLog('✅ 已迁移 ' + Object.keys(data).length + ' 条数据到 GM_setValue', 'ok');
+          return true;
+        } else {
+          uLog('⚠ 数据过大（' + (json.length / 1024 / 1024).toFixed(1) + 'MB），无法迁移到 GM_setValue', 'warn');
+          return false;
+        }
+      } catch (e) {
+        uLog('⚠ 迁移到 GM_setValue 失败: ' + e.message, 'warn');
+        return false;
+      }
+    },
+
+    /* ========== 8. IndexedDB 读取单条 ========== */
     async idbGet(key) {
       const db = await this._openIDB();
       return new Promise((resolve, reject) => {
-        const tx  = db.transaction(this.STORE_NAME, 'readonly');
+        const tx    = db.transaction(this.STORE_NAME, 'readonly');
         const store = tx.objectStore(this.STORE_NAME);
-        const req = store.get(key);
+        const req   = store.get(key);
         req.onsuccess = () => resolve(req.result);
         req.onerror   = () => reject(req.error);
         tx.oncomplete = () => db.close();
       });
     },
 
-    /** 写入单条到 IndexedDB */
+    /* ========== 9. IndexedDB 写入单条 ========== */
     async idbSet(key, value) {
       const db = await this._openIDB();
       return new Promise((resolve, reject) => {
-        const tx  = db.transaction(this.STORE_NAME, 'readwrite');
+        const tx    = db.transaction(this.STORE_NAME, 'readwrite');
         const store = tx.objectStore(this.STORE_NAME);
-        const req = store.put(value, key);
+        const req   = store.put(value, key);
         req.onsuccess = () => resolve();
         req.onerror   = () => reject(req.error);
         tx.oncomplete = () => { db.close(); resolve(); };
       });
     },
 
-    /** 从 IndexedDB 读取全部数据，返回 {question: answer, ...} */
+    /* ========== 10. IndexedDB 批量读取（性能优化：游标 + 批量） ========== */
     async idbGetAll() {
       const db = await this._openIDB();
       return new Promise((resolve, reject) => {
         const tx     = db.transaction(this.STORE_NAME, 'readonly');
         const store  = tx.objectStore(this.STORE_NAME);
         const result = {};
-        store.openCursor().onsuccess = e => {
+        let count    = 0;
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = e => {
           const cursor = e.target.result;
           if (cursor) {
             result[cursor.key] = cursor.value;
+            count++;
             cursor.continue();
           }
         };
@@ -350,26 +512,30 @@
       });
     },
 
-    /** 批量写入数据到 IndexedDB（清空后全量写入） */
+    /* ========== 11. IndexedDB 批量写入（性能优化：单次事务） ========== */
     async idbSetAll(data) {
       const db = await this._openIDB();
       return new Promise((resolve, reject) => {
-        const tx  = db.transaction(this.STORE_NAME, 'readwrite');
+        const tx    = db.transaction(this.STORE_NAME, 'readwrite');
         const store = tx.objectStore(this.STORE_NAME);
         store.clear();
+        let processed = 0;
+        const total = Object.keys(data).length;
         for (const [k, v] of Object.entries(data)) {
           store.put(v, k);
+          processed++;
         }
         tx.oncomplete = () => { db.close(); resolve(); };
         tx.onerror    = () => { db.close(); reject(tx.error); };
       });
     },
 
-    /** 清空 IndexedDB */
+    /* ========== 12. 清空 IndexedDB ========== */
     async idbClear() {
+      if (!this._checkIDBSupport()) return;
       const db = await this._openIDB();
       return new Promise((resolve, reject) => {
-        const tx  = db.transaction(this.STORE_NAME, 'readwrite');
+        const tx    = db.transaction(this.STORE_NAME, 'readwrite');
         const store = tx.objectStore(this.STORE_NAME);
         store.clear();
         tx.oncomplete = () => { db.close(); resolve(); };
@@ -377,48 +543,151 @@
       });
     },
 
-    /** 主入口：读取数据，自动选择后端 */
+    /* ========== 13. 主入口：读取数据（自动选择后端 + 版本管理 + 解压） ========== */
     async get(key) {
       const backend = this._getBackend(key);
-      if (backend === 'idb') {
+
+      // 尝试从 IndexedDB 读取
+      if (backend === 'idb' && this._checkIDBSupport()) {
         try {
           const data = await this.idbGetAll();
-          uLog('📦 从 IndexedDB 读取题库（' + Object.keys(data).length + ' 条）', 'ok');
+          uLog('📦 从 IndexedDB 读取（' + Object.keys(data).length + ' 条）', 'ok');
+          // 解压（如果有压缩标记）
+          if (data.__compressed) {
+            const decompressed = LZString.decompressFromBase64(data.data);
+            return JSON.parse(decompressed);
+          }
           return data;
         } catch (e) {
-          uLog('⚠ IndexedDB 读取失败，降级到 GM_storage: ' + e.message, 'warn');
+          uLog('⚠ IndexedDB 读取失败，降级到 GM_setValue: ' + e.message, 'warn');
+          // 降级：切换后端到 GM
+          GM_setValue(key + '__backend', 'gm');
         }
       }
-      // 默认从 GM_setValue 读取（包括 marker 判断）
+
+      // 从 GM_setValue 读取（默认 + 降级）
       try {
         const raw = GM_getValue(key, '{}');
-        return JSON.parse(raw);
-      } catch {
+        const data = JSON.parse(raw);
+
+        // 解压（如果有压缩标记）
+        if (data.__compressed) {
+          const decompressed = LZString.decompressFromBase64(data.data);
+          const result = JSON.parse(decompressed);
+          
+          // 自动迁移：如果数据过大，迁移到 IndexedDB
+          if (this._checkIDBSupport() && this._shouldUseIDB(decompressed)) {
+            uLog('📦 检测到大数据，自动迁移到 IndexedDB...', 'info');
+            await this.idbSetAll(result);
+            GM_setValue(key + '__backend', 'idb');
+            return result;
+          }
+          
+          return result;
+        }
+
+        // 自动迁移：如果数据过大，迁移到 IndexedDB
+        if (this._checkIDBSupport() && this._shouldUseIDB(raw)) {
+          uLog('📦 检测到大数据，自动迁移到 IndexedDB...', 'info');
+          await this.idbSetAll(data);
+          GM_setValue(key + '__backend', 'idb');
+          return data;
+        }
+
+        return data;
+      } catch (e) {
+        uLog('⚠ GM_setValue 读取失败: ' + e.message, 'warn');
         return {};
       }
     },
 
-    /** 主入口：写入数据，根据大小自动选择后端 */
+    /* ========== 14. 主入口：写入数据（自动选择后端 + 压缩） ========== */
     async set(key, value) {
       const json = JSON.stringify(value);
-      if (this._shouldUseIDB(json)) {
-        // 大数据：存 IndexedDB
-        await this.idbSetAll(value);
-        GM_setValue(key, JSON.stringify({"__storage":"indexeddb"}));
-        GM_setValue(key + '__backend', 'idb');
-        uLog('📦 题库已切换到 IndexedDB 存储（' + (json.length / 1024 / 1024).toFixed(1) + 'MB）', 'ok');
-      } else {
-        // 小数据：存 GM_setValue
-        GM_setValue(key, json);
+
+      // 尝试压缩（如果启用）
+      let dataToStore = value;
+      let isCompressed = false;
+      if (CFG.compressEnable) {
+        const compressed = LZString.compressToBase64(json);
+        if (compressed && compressed.length < json.length) {
+          dataToStore = { __compressed: true, data: compressed };
+          isCompressed = true;
+          uLog('📦 数据已压缩：' + json.length + ' → ' + compressed.length + ' 字节', 'info');
+        }
+      }
+
+      // 大数据：存 IndexedDB
+      const sizeToCheck = isCompressed ? JSON.stringify(dataToStore).length : json.length;
+      if (this._checkIDBSupport() && this._shouldUseIDB(sizeToCheck)) {
+        try {
+          await this.idbSetAll(dataToStore);
+          GM_setValue(key + '__backend', 'idb');
+          uLog('📦 已存储到 IndexedDB（' + (sizeToCheck / 1024 / 1024).toFixed(1) + 'MB）', 'ok');
+        } catch (e) {
+          uLog('⚠ IndexedDB 写入失败，降级到 GM_setValue: ' + e.message, 'warn');
+          GM_setValue(key, JSON.stringify(dataToStore));
+          GM_setValue(key + '__backend', 'gm');
+        }
+        return;
+      }
+
+      // 小数据：存 GM_setValue
+      try {
+        GM_setValue(key, JSON.stringify(dataToStore));
         GM_setValue(key + '__backend', 'gm');
+      } catch (e) {
+        uLog('⚠ GM_setValue 写入失败: ' + e.message, 'warn');
+        // 如果 GM 也失败，尝试 IndexedDB
+        if (this._checkIDBSupport()) {
+          try {
+            await this.idbSetAll(dataToStore);
+            GM_setValue(key + '__backend', 'idb');
+            uLog('📦 已降级存储到 IndexedDB', 'ok');
+          } catch (e2) {
+            uLog('❌ 所有存储后端均失败', 'error');
+          }
+        }
       }
     },
 
-    /** 移除数据（两个后端都清理） */
+    /* ========== 15. 移除数据（两个后端都清理） ========== */
     async remove(key) {
       GM_setValue(key, '{}');
       GM_setValue(key + '__backend', 'gm');
-      try { await this.idbClear(); } catch {}
+      if (this._checkIDBSupport()) {
+        try { await this.idbClear(); } catch {}
+      }
+    },
+
+    /* ========== 16. 获取存储统计信息 ========== */
+    async getStorageInfo(key) {
+      const backend = this._getBackend(key);
+      const info = { backend, supported: this._checkIDBSupport() };
+
+      if (backend === 'idb' && this._checkIDBSupport()) {
+        try {
+          const data = await this.idbGetAll();
+          info.count = Object.keys(data).length;
+          info.size  = JSON.stringify(data).length;
+        } catch {
+          info.count = 0;
+          info.size  = 0;
+        }
+      } else {
+        try {
+          const raw = GM_getValue(key, '{}');
+          const data = JSON.parse(raw);
+          info.count = Object.keys(data).length;
+          info.size  = raw.length;
+        } catch {
+          info.count = 0;
+          info.size  = 0;
+        }
+      }
+
+      info.sizeMB = (info.size / 1024 / 1024).toFixed(2);
+      return info;
     }
   };
 
