@@ -1,4 +1,11 @@
 # Changelog
+## v4.8.14
+### 🐛 修复
+- **修复点击「导入分享」tab 报错 `Cannot read properties of null (reading 'classList')`**
+- 补上缺失的 `pane-import-shared` HTML（之前只有 tab 没有对应 pane，导致 `$('#pane-import-shared')` 为 null）
+- 新增「从分享链接导入题库」面板：输入 Gist ID → 点击导入
+- `cloudImport()` 支持传入自定义 `gistId` 参数（不再只读取 `CFG.cloudGistId`）
+
 ## v4.8.13
 ### 🐛 修复
 - **修复云端模式无法匹配题目**：`rebuildCache()` 云端模式下只用了 `_cloudCache`，没有合并本地题库

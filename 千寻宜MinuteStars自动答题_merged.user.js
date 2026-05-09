@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.13
+// @version      4.8.14
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -1599,14 +1599,17 @@
     }
   }
 
-  /** 从 Gist 导入题库（追加到本地：云端有则用云端，本地有则保留本地） */
-  async function cloudImport() {
-    if (!CFG.cloudSyncEnable || !CFG.cloudGistId) {
+  /** 从 Gist 导入题库（追加到本地：云端有则用云端，本地有则保留本地）
+   *  @param {string} [gistId] - 可选，指定 Gist ID；不传则使用 CFG.cloudGistId
+   */
+  async function cloudImport(gistId) {
+    const useId = gistId || CFG.cloudGistId;
+    if (!CFG.cloudSyncEnable || !useId) {
       uLog('⚠️ 请先在设置中填写 Gist ID 并开启云同步', 'warn'); return false;
     }
     uLog('☁ 正在导入云端题库（追加到本地）…', 'info');
     try {
-      const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
+      const resp = await _gistReq('GET', gistUrl(useId), null);
       const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
       const file = data.files?.['minutestars_qa.json'];
       if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
@@ -2906,6 +2909,18 @@
           </div>
         </div>
 
+        <div class="ata-pane" id="pane-import-shared">
+          <div class="ata-lib-format">
+            <b>从分享链接导入题库</b><br>
+            输入他人分享的 Gist ID，从云端导入题库（追加模式，本地已有题目保留）<br>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin:12px 0">
+            <input type="text" id="ata-import-shared-id" placeholder="输入 Gist ID" style="flex:1;padding:8px;border-radius:8px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;">
+            <button class="ata-btn green" id="ata-do-import-shared">📥 导入</button>
+          </div>
+          <div id="ata-import-shared-msg" style="font-size:12px;color:#aaa"></div>
+        </div>
+
       </div>
     </div>
   `;
@@ -3192,6 +3207,15 @@
     const r = new FileReader();
     r.onload = ev => { doImport(ev.target.result); e.target.value = ''; };
     r.readAsText(f);
+  });
+
+  $('#ata-do-import-shared').addEventListener('click', async () => {
+    const gistId = $('#ata-import-shared-id')?.value?.trim();
+    const msgEl = $('#ata-import-shared-msg');
+    if (!gistId) { if (msgEl) msgEl.textContent = '⚠️ 请输入 Gist ID'; return; }
+    if (msgEl) msgEl.textContent = '⏳ 正在导入...';
+    const result = await cloudImport(gistId);
+    if (msgEl) msgEl.textContent = result ? '✅ 导入成功！' : '❌ 导入失败，请检查 Gist ID';
   });
 
   /* =========================================================
