@@ -2548,7 +2548,10 @@
     <div id="ata-lib-box">
       <div id="ata-lib-header">
         <h3>📚 题库管理 — 共 <span id="ata-lib-total">0</span> 条</h3>
-        <button id="ata-lib-close">✕</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="ata-lib-share" class="ata-btn green" style="padding:4px 10px;font-size:11px">📤 分享题库</button>
+          <button id="ata-lib-close">✕</button>
+        </div>
       </div>
       <div id="ata-lib-tabs">
         <div class="ata-tab active" data-tab="stats">📊 统计</div>
@@ -2557,6 +2560,7 @@
         <div class="ata-tab" data-tab="browse">🔍 浏览题库</div>
         <div class="ata-tab" data-tab="tags">🏷️ 标签</div>
         <div class="ata-tab" data-tab="export">📤 导出</div>
+        <div class="ata-tab" data-tab="import-shared">📥 导入分享</div>
       </div>
       <div id="ata-lib-body">
 
@@ -3066,6 +3070,33 @@
     renderBrowse(1);
   });
   $('#ata-lib-close').addEventListener('click', () => modal.classList.remove('show'));
+  $('#ata-lib-share').addEventListener('click', async () => {
+    const db = await LibraryManager.load();
+    const count = Object.keys(db).length;
+    if (count === 0) { uLog('题库为空，无需分享', 'warn'); return; }
+    uLog('📤 正在生成分享链接...', 'info');
+    // 上传到 Gist（私有，需 token）
+    if (!CFG.cloudToken) {
+      uLog('⚠️ 请先在「云同步」中填写 Gitee Token', 'warn'); return;
+    }
+    try {
+      const content = JSON.stringify(db, null, 2);
+      const payload = JSON.stringify({
+        public: false,
+        files: { 'minutestars_qa.json': { content } },
+      });
+      const resp = await _gistReq('POST', gistUrl(''), payload);
+      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+      if (data.id) {
+        const url = `https://gist.gitee.com/${data.id}`;
+        uLog('✅ 分享成功！链接：<a href="${url}" target="_blank">${url}</a>', 'ok');
+        // 保存到 Gist ID（方便管理）
+        CFG.cloudGistId = data.id; saveCFG();
+      }
+    } catch (e) {
+      uLog('❌ 分享失败：' + e.message, 'err');
+    }
+  });
   modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
 
   // 导入
