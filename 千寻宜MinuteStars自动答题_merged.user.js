@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.12
+// @version      4.8.13
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -772,7 +772,9 @@
   function rebuildCache() {
     let userDB;
     if (CFG.cloudReadMode === 'cloud') {
-      userDB = _cloudCache || {};
+      // 云端模式：合并本地题库 + 云端缓存（云端优先）
+      const localDB = (() => { try { return JSON.parse(GM_getValue(DB_KEY, '{}')); } catch { return {}; } })();
+      userDB = { ...localDB, ...(_cloudCache || {}) };
     } else {
       // 本地模式：从内存缓存读取（若未初始化则触发一次异步加载）
       if (!_cache.raw || typeof _cache.raw !== 'object') {
