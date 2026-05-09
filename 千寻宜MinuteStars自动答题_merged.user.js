@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.6
+// @version      4.8.7
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -262,6 +262,8 @@
      题库管理器（GM_setValue 持久化，跨会话保存用户自定义题库）
   ========================================================= */
   const DB_KEY = 'qxy_merged_v4';
+  const SOURCE_KEY = 'qxy_source_v4';  // 题目来源追踪：questionText → 'cloud'|'local'
+  let _sourceMap = {};
 
   const LibraryManager = {
     /** 同步读取内存缓存（优先），失败时从存储加载 */
@@ -273,17 +275,19 @@
     async reload() {
       const data = await StorageManager.get(DB_KEY);
       _cache.raw = data || {};
+      _sourceMap = await StorageManager.get(SOURCE_KEY) || {};
       _cache.dirty = true;
       return _cache.raw;
     },
     /** 异步保存（自动选后端），并刷新内存缓存 */
     async save(db) {
       await StorageManager.set(DB_KEY, db);
+      await StorageManager.set(SOURCE_KEY, _sourceMap || {});
       _cache.raw = db;
     },
     get count() { return _cache.dirty ? Object.keys(this.load()).length : _cache.userCount; },
 
-    async add(question, answer) {
+    async add(question, answer, source = 'local') {
       const db = await this.reload();
       // v4.7.0 语义去重：检测相似题（N-gram + Jaro-Winkler）
       const dup = semanticDedupCheck(question, db);
@@ -292,12 +296,13 @@
         return { skipped: true, similarTo: dup };
       }
       db[question] = answer;
+      this.setSource(question, source);
       await this.save(db);
       _cache.dirty = true;
       return db;
     },
 
-    async addBulk(text) {
+    async addBulk(text, source = 'local') {
       const db = await this.reload();
       let added = 0, skipped = 0;
       const duplicates = [];
@@ -330,7 +335,8 @@
               continue;
             }
           }
-          db[q] = a; added++;
+          db[q] = a;
+          this.setSource(q, source); added++;
         } else skipped++;
       }
       await this.save(db);
@@ -342,15 +348,39 @@
     async remove(question) {
       const db = await this.reload();
       delete db[question];
+      this.removeSource(question);
       await this.save(db);
       _cache.dirty = true;
       _cache.dirtyKeys?.add(question);
     },
 
-    async clear() { await StorageManager.remove(DB_KEY); _cache.raw = {}; _cache.dirty = true; _cache.dirtyKeys?.clear(); },
+    async clear() { await StorageManager.remove(DB_KEY); await StorageManager.remove(SOURCE_KEY); _cache.raw = {}; _sourceMap = {}; _cache.dirty = true; _cache.dirtyKeys?.clear(); },
 
     async exportJSON() { const db = await this.reload(); return JSON.stringify(db, null, 2); },
-    async exportTXT() { const db = await this.reload(); return Object.entries(db).map(([q, a]) => q + '||' + a).join('\n'); }
+    async exportTXT() { const db = await this.reload(); return Object.entries(db).map(([q, a]) => q + '||' + a).join('\n'); },
+
+    /** 设置单题来源（'cloud'|'local'） */
+    setSource(question, source) {
+      if (!_sourceMap) _sourceMap = {};
+      _sourceMap[question] = source;
+    },
+
+    /** 移除单题来源记录 */
+    removeSource(question) {
+      if (_sourceMap) delete _sourceMap[question];
+    },
+
+    /** 统计来源分布，返回 { cloud, local } */
+    getSourceStats() {
+      const stats = { cloud: 0, local: 0 };
+      const db = this.load();
+      for (const q of Object.keys(db)) {
+        const src = (_sourceMap || {})[q];
+        if (src === 'cloud') stats.cloud++;
+        else stats.local++;  // 默认归为 local（兼容无来源记录的老数据）
+      }
+      return stats;
+    },
   };
 
   /* =========================================================
@@ -1536,6 +1566,9 @@
       const file = data.files?.['minutestars_qa.json'];
       if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
       const remoteDB = JSON.parse(file.content);
+      // 标记全部题目来源为云端
+      if (!_sourceMap) _sourceMap = {};
+      Object.keys(remoteDB).forEach(q => { _sourceMap[q] = 'cloud'; });
       // 直读云端模式：同时更新内存缓存
       if (CFG.cloudReadMode === 'cloud') {
         _cloudCache = remoteDB;
@@ -1574,6 +1607,13 @@
       const before = Object.keys(localDB).length;
       // 追加：云端补充本地没有的条目
       const merged = { ...localDB, ...cloudDB };
+      // 标记来自云端的题目来源为云端
+      if (!_sourceMap) _sourceMap = {};
+      for (const q of Object.keys(cloudDB)) {
+        if (!localDB.hasOwnProperty(q)) {
+          _sourceMap[q] = 'cloud';
+        }
+      }
       if (CFG.cloudReadMode === 'cloud') {
         _cloudCache = merged;
         _cloudCacheTime = Date.now();
@@ -2876,11 +2916,14 @@ l);
     [['stat-total', total],['stat-single', single],['stat-multi', multi],['stat-user', uc],['stat-uc', uc]].forEach(([id, val]) => {
       const el = $(('#'+id)); if (el) el.textContent = val;
     });
-    // 绘制饼图（纯云端：全部为云端题库，统一显示）
+    // 绘制饼图（按来源分布）
+    const stats = LibraryManager.getSourceStats();
     const total2 = Object.keys(db).length;
-    const bEl = $('#stat-builtin-pct'); if (bEl) bEl.textContent = total2 > 0 ? '100%' : '0%';
-    const uEl = $('#stat-user-pct'); if (uEl) uEl.textContent = '0%';
-    drawPieChart('ata-pie-canvas', [total2], ['#5a8dee']);
+    const cloudPct = total2 > 0 ? Math.round(stats.cloud / total2 * 100) : 0;
+    const localPct = total2 > 0 ? Math.round(stats.local / total2 * 100) : 0;
+    const bEl = $('#stat-builtin-pct'); if (bEl) bEl.textContent = cloudPct + '%';
+    const uEl = $('#stat-user-pct'); if (uEl) uEl.textContent = localPct + '%';
+    drawPieChart('ata-pie-canvas', [stats.cloud, stats.local], ['#5a8dee', '#48bb78']);
   }
 
   // 绘制饼图
