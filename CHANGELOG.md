@@ -1,4 +1,7 @@
 # Changelog
+## v4.8.5
+### ⚙️ 配置调整
+- **答题模式默认改为云端**：`cloudReadMode: 'local'` → `'cloud'`（直读云端答题，不落地）
 
 ## v4.8.4
 
