@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.8.4
+
+### ⚙️ 配置调整
+- **自动答题默认开启**：`autoAnswer: false` → `true`
+- **自动提交默认开启**：`autoSubmit: false` → `true`
+
 ## v4.8.3
 
 ### ⚙️ 配置调整
