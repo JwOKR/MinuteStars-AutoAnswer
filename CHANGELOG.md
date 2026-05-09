@@ -1,5 +1,29 @@
 # Changelog
 
+## v4.6.0
+
+### ✨ 重大升级：IndexedDB 大数据存储
+- **StorageManager 抽象层**：根据数据大小自动选择后端（≤1MB 用 GM_setValue，>1MB 用 IndexedDB）
+- **突破 5MB 瓶颈**：IndexedDB 理论无上限，彻底解决 GM_setValue 存储限制
+- **向后兼容**：小数据量仍用 GM_setValue，无缝切换
+- **LibraryManager 重构**：新增 `async reload()` 异步加载，`save()` 改为异步
+
+### ✨ 新功能
+- **域名通配符支持**：`@match` 改为 `*://*.minutestars.com/*`，自动匹配所有子域名
+- **自定义域名配置**：`customDomains` 配置项，支持添加任意匹配域名
+- **AI 请求去重缓存**：同题只问一次，用 Map 缓存避免重复 API 调用
+- **AI 指数退避重试**：429 频率限制后自动重试（1s, 2s, 4s）
+- **AI 连续失败自动禁用**：连续失败达到阈值自动关闭 AI 开关
+
+### 🔄 架构优化
+- **初始化改为 async IIFE**：确保题库异步加载完成后再开始答题
+- **rebuildCache 改为同步**：从内存缓存读取，避免调用链断裂
+- **StorageManager API**：统一 `get/set/remove`，内部自动选择最佳后端
+
+### 🐛 Bug 修复
+- 修复多次编辑后文件内容偏移导致 Edit 失败的问题（改用 Write 工具）
+- 修复 AI 匹配函数入口参数处理不完整的问题
+
 ## v4.5.66
 
 ### ✨ 新功能：直读云端模式

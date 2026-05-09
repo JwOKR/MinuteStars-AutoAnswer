@@ -1,14 +1,11 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.5.66
+// @version      4.6.0
 // @author       JIA
-// @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基) + Gitee Gist云同步（上传合并/下载覆盖） + 快捷键(Alt+Enter/S/D) + GM通知 + 答题报告(JSON/CSV导出) + 题库浏览增强(正则/答案筛选/随机抽查) + 配置分离备份 + Word文档导入(.docx) + 拖拽移动 + 8方向调整大小 + 支持 erp/marketoperation/multimedia/zhibo 域名 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
-// @match        https://pcs.minutestars.com/*
-// @match        https://erp.minutestars.com/*
-// @match        https://marketoperation.minutestars.com/*
-// @match        https://multimedia.minutestars.com/*
-// @match        https://zhibo.minutestars.com/*
+// @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
+// @match        *://*.minutestars.com/*
+// @match        *://localhost/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
@@ -53,6 +50,7 @@
     cloudReadMode:    'local', // 'local'=本地存储答题（需下载），'cloud'=直读云端答题（不落地）
     cloudGistId:      '',     // Gist ID
     cloudToken:       '',     // Gitee 私人令牌
+    customDomains:    [],    // 自定义匹配域名（运行时生效）
   };
 
   /** 运行时配置（从 GM storage 恢复） */
@@ -85,24 +83,35 @@
   const DB_KEY = 'qxy_merged_v4';
 
   const LibraryManager = {
+    /** 同步读取内存缓存（优先），失败时从存储加载 */
     load() {
+      if (_cache.raw && typeof _cache.raw === 'object') return _cache.raw;
       try { return JSON.parse(GM_getValue(DB_KEY, '{}')); } catch { return {}; }
     },
-    save(db) {
-      try { GM_setValue(DB_KEY, JSON.stringify(db)); } catch {}
+    /** 异步从存储加载数据到内存（_cache.raw） */
+    async reload() {
+      const data = await StorageManager.get(DB_KEY);
+      _cache.raw = data || {};
+      _cache.dirty = true;
+      return _cache.raw;
+    },
+    /** 异步保存（自动选后端），并刷新内存缓存 */
+    async save(db) {
+      await StorageManager.set(DB_KEY, db);
+      _cache.raw = db;
     },
     get count() { return _cache.dirty ? Object.keys(this.load()).length : _cache.userCount; },
 
-    add(question, answer) {
-      const db = this.load();
+    async add(question, answer) {
+      const db = await this.reload();
       db[question] = answer;
-      this.save(db);
+      await this.save(db);
       _cache.dirty = true;
       return db;
     },
 
-    addBulk(text) {
-      const db = this.load();
+    async addBulk(text) {
+      const db = await this.reload();
       let added = 0, skipped = 0;
       const duplicates = [];
       const lines = text.split('\n').map(l => l.trim()).filter(l => l);
@@ -129,29 +138,175 @@
           db[q] = a; added++;
         } else skipped++;
       }
-      // ⚡ 安全检查：GM_setValue 大数据会导致 Tampermonkey 卡死
-      const jsonSize = JSON.stringify(db).length;
-      if (jsonSize > 5 * 1024 * 1024) { // 5MB 阈值
-        console.warn('[ATA] 题库数据过大 (' + (jsonSize / 1024 / 1024).toFixed(1) + 'MB)，建议清理');
-      }
-      this.save(db);
+      await this.save(db);
       _cache.dirty = true;
       Object.keys(db).slice(-added).forEach(k => _cache.dirtyKeys?.add(k));
       return { added, skipped, duplicates };
     },
 
-    remove(question) {
-      const db = this.load();
+    async remove(question) {
+      const db = await this.reload();
       delete db[question];
-      this.save(db);
+      await this.save(db);
       _cache.dirty = true;
       _cache.dirtyKeys?.add(question);
     },
 
-    clear() { GM_setValue(DB_KEY, '{}'); _cache.dirty = true; _cache.dirtyKeys?.clear(); },
+    async clear() { await StorageManager.remove(DB_KEY); _cache.raw = {}; _cache.dirty = true; _cache.dirtyKeys?.clear(); },
 
-    exportJSON() { return JSON.stringify(this.load(), null, 2); },
-    exportTXT() { return Object.entries(this.load()).map(([q, a]) => q + '||' + a).join('\n'); }
+    async exportJSON() { const db = await this.reload(); return JSON.stringify(db, null, 2); },
+    async exportTXT() { const db = await this.reload(); return Object.entries(db).map(([q, a]) => q + '||' + a).join('\n'); }
+  };
+
+  /* =========================================================
+      StorageManager — 存储抽象层（v4.6.0）
+      小数据(≤1MB) → GM_setValue，大数据(>1MB) → IndexedDB
+  ========================================================= */
+  const StorageManager = {
+    DB_NAME:   'ata_qa_db',
+    STORE_NAME: 'qa_store',
+    THRESHOLD: 1 * 1024 * 1024, // 1MB
+
+    /** 判断某个 key 的存储后端（'gm' | 'idb'） */
+    _getBackend(key) {
+      return GM_getValue(key + '__backend', 'gm');
+    },
+
+    /** 判断是否需要用 IndexedDB（根据序列化后大小） */
+    _shouldUseIDB(jsonString) {
+      return jsonString.length > this.THRESHOLD;
+    },
+
+    /** 打开 IndexedDB 连接 */
+    _openIDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(this.DB_NAME, 1);
+        req.onupgradeneeded = e => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+            db.createObjectStore(this.STORE_NAME);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror    = () => reject(req.error);
+      });
+    },
+
+    /** 从 IndexedDB 读取单条 */
+    async idbGet(key) {
+      const db = await this._openIDB();
+      return new Promise((resolve, reject) => {
+        const tx  = db.transaction(this.STORE_NAME, 'readonly');
+        const store = tx.objectStore(this.STORE_NAME);
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror   = () => reject(req.error);
+        tx.oncomplete = () => db.close();
+      });
+    },
+
+    /** 写入单条到 IndexedDB */
+    async idbSet(key, value) {
+      const db = await this._openIDB();
+      return new Promise((resolve, reject) => {
+        const tx  = db.transaction(this.STORE_NAME, 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        const req = store.put(value, key);
+        req.onsuccess = () => resolve();
+        req.onerror   = () => reject(req.error);
+        tx.oncomplete = () => { db.close(); resolve(); };
+      });
+    },
+
+    /** 从 IndexedDB 读取全部数据，返回 {question: answer, ...} */
+    async idbGetAll() {
+      const db = await this._openIDB();
+      return new Promise((resolve, reject) => {
+        const tx     = db.transaction(this.STORE_NAME, 'readonly');
+        const store  = tx.objectStore(this.STORE_NAME);
+        const result = {};
+        store.openCursor().onsuccess = e => {
+          const cursor = e.target.result;
+          if (cursor) {
+            result[cursor.key] = cursor.value;
+            cursor.continue();
+          }
+        };
+        tx.oncomplete = () => { db.close(); resolve(result); };
+        tx.onerror    = () => { db.close(); reject(tx.error); };
+      });
+    },
+
+    /** 批量写入数据到 IndexedDB（清空后全量写入） */
+    async idbSetAll(data) {
+      const db = await this._openIDB();
+      return new Promise((resolve, reject) => {
+        const tx  = db.transaction(this.STORE_NAME, 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        store.clear();
+        for (const [k, v] of Object.entries(data)) {
+          store.put(v, k);
+        }
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror    = () => { db.close(); reject(tx.error); };
+      });
+    },
+
+    /** 清空 IndexedDB */
+    async idbClear() {
+      const db = await this._openIDB();
+      return new Promise((resolve, reject) => {
+        const tx  = db.transaction(this.STORE_NAME, 'readwrite');
+        const store = tx.objectStore(this.STORE_NAME);
+        store.clear();
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror    = () => { db.close(); reject(tx.error); };
+      });
+    },
+
+    /** 主入口：读取数据，自动选择后端 */
+    async get(key) {
+      const backend = this._getBackend(key);
+      if (backend === 'idb') {
+        try {
+          const data = await this.idbGetAll();
+          uLog('📦 从 IndexedDB 读取题库（' + Object.keys(data).length + ' 条）', 'ok');
+          return data;
+        } catch (e) {
+          uLog('⚠ IndexedDB 读取失败，降级到 GM_storage: ' + e.message, 'warn');
+        }
+      }
+      // 默认从 GM_setValue 读取（包括 marker 判断）
+      try {
+        const raw = GM_getValue(key, '{}');
+        return JSON.parse(raw);
+      } catch {
+        return {};
+      }
+    },
+
+    /** 主入口：写入数据，根据大小自动选择后端 */
+    async set(key, value) {
+      const json = JSON.stringify(value);
+      if (this._shouldUseIDB(json)) {
+        // 大数据：存 IndexedDB
+        await this.idbSetAll(value);
+        GM_setValue(key, JSON.stringify({"__storage":"indexeddb"}));
+        GM_setValue(key + '__backend', 'idb');
+        uLog('📦 题库已切换到 IndexedDB 存储（' + (json.length / 1024 / 1024).toFixed(1) + 'MB）', 'ok');
+      } else {
+        // 小数据：存 GM_setValue
+        GM_setValue(key, json);
+        GM_setValue(key + '__backend', 'gm');
+      }
+    },
+
+    /** 移除数据（两个后端都清理） */
+    async remove(key) {
+      GM_setValue(key, '{}');
+      GM_setValue(key + '__backend', 'gm');
+      try { await this.idbClear(); } catch {}
+    }
   };
 
 // 合并题库（内置 + 用户自定义，用户可覆盖内置答案）
@@ -209,11 +364,14 @@
   function rebuildCache() {
     let userDB;
     if (CFG.cloudReadMode === 'cloud') {
-      // 直读云端模式：使用内存缓存题库（fetchCloudDB 需先调用）
       userDB = _cloudCache || {};
     } else {
-      // 本地模式：从 GM_storage 读取
-      userDB = LibraryManager.load();
+      // 本地模式：从内存缓存读取（若未初始化则触发一次异步加载）
+      if (!_cache.raw || typeof _cache.raw !== 'object') {
+        // 同步路径：尝试从 GM 直接读取（兼容无 IndexedDB 环境）
+        try { _cache.raw = JSON.parse(GM_getValue(DB_KEY, '{}')); } catch { _cache.raw = {}; }
+      }
+      userDB = _cache.raw || {};
     }
     const raw = { ...userDB };
 
@@ -541,9 +699,21 @@
   /* =========================================================
      AI 辅助匹配（DeepSeek / 硅基流动 API）
      ⚡ v4.5.39：题库无命中时的语义兜底
+     ⚡ v4.6.0：AI重试机制 + 去重缓存 + 连续失败自动禁用
   ========================================================= */
+  const _aiCache = new Map();       // 请求去重缓存（同题只问一次）
+  const AI_FAIL_THRESHOLD = 5;     // 连续失败 N 次后自动禁用 AI
+  let _aiFailCount = 0;           // 连续失败计数器
+
   async function aiMatch(qText, inputs) {
     if (!CFG.aiEnable || !CFG.aiApiKey) return null;
+
+    // ① 请求去重缓存：同题只问一次
+    if (_aiCache.has(qText)) {
+      CFG.debug && console.log('[AI Cache]', qText.substring(0,30), '->', _aiCache.get(qText));
+      return _aiCache.get(qText);
+    }
+
     const optTexts = inputs.map(i => {
       const label = i.closest('label') || i.parentElement;
       return label ? label.textContent.replace(/\s+/g,' ').trim() : (i.value || '');
@@ -555,45 +725,86 @@
 
 请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。`;
 
-    try {
-      const resp = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', CFG.aiEndpoint, true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('Authorization', 'Bearer ' + CFG.aiApiKey);
-        xhr.timeout = 15000;
-        xhr.onload = () => resolve(xhr);
-        xhr.onerror = reject;
-        xhr.ontimeout = reject;
-        xhr.send(JSON.stringify({
-          model: 'deepseek-ai/DeepSeek-V3', // 硅基流动兼容模型
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 32,
-          temperature: 0.1,
-        }));
-      });
-      if (resp.status === 200) {
-        const data = JSON.parse(resp.responseText);
-        const content = (data.choices?.[0]?.message?.content || '').trim();
-        const match = content.match(/^[A-Z](?:,[A-Z])*$/i);
-        if (match) {
-          CFG.debug && console.log('[AI Match]', qText.substring(0,30), '->', match[0]);
-          return match[0].toUpperCase();
+    const retry = 3;
+    for (let attempt = 0; attempt <= retry; attempt++) {
+      try {
+        const resp = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', CFG.aiEndpoint, true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.setRequestHeader('Authorization', 'Bearer ' + CFG.aiApiKey);
+          xhr.timeout = 15000;
+          xhr.onload = () => resolve(xhr);
+          xhr.onerror = reject;
+          xhr.ontimeout = reject;
+          xhr.send(JSON.stringify({
+            model: 'deepseek-ai/DeepSeek-V3',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 32,
+            temperature: 0.1,
+          }));
+        });
+
+        if (resp.status === 200) {
+          const data = JSON.parse(resp.responseText);
+          const content = (data.choices?.[0]?.message?.content || '').trim();
+          const match = content.match(/^[A-Z](?:,[A-Z])*$/i);
+          if (match) {
+            const result = match[0].toUpperCase();
+            _aiCache.set(qText, result);   // 写入缓存
+            _aiFailCount = 0;              // 成功，重置失败计数
+            CFG.debug && console.log('[AI Match]', qText.substring(0,30), '->', result);
+            return result;
+          }
+          // 返回格式不对，不算失败，直接返回 null
+          _aiFailCount = 0;
+          return null;
         }
-      } else if (resp.status === 401) {
-        uLog('🤖 AI Key 无效（401），请检查 API Key', 'err');
-      } else if (resp.status === 429) {
-        uLog('🤖 AI 请求频率限制（429），稍后重试', 'warn');
-      } else {
+
+        if (resp.status === 401) {
+          uLog('🤖 AI Key 无效（401），已自动关闭 AI', 'err');
+          CFG.aiEnable = false; saveCFG();
+          return null;
+        }
+
+        if (resp.status === 429) {
+          _aiFailCount++;
+          if (attempt < retry) {
+            uLog('🤖 AI 频率限制（429），' + (1000 * Math.pow(2, attempt)) + 'ms 后重试', 'warn');
+            await sleep(1000 * Math.pow(2, attempt));
+            continue;
+          }
+          uLog('🤖 AI 频率限制（429），重试次数用尽', 'warn');
+          return null;
+        }
+
+        // 其他 HTTP 错误
+        _aiFailCount++;
+        if (attempt < retry) {
+          CFG.debug && console.warn('[AI Match] HTTP ' + resp.status + '，重试中...');
+          await sleep(1000 * (attempt + 1));
+          continue;
+        }
         CFG.debug && console.warn('[AI Match] HTTP ' + resp.status + ':', resp.responseText?.substring(0,100));
+      } catch (e) {
+        _aiFailCount++;
+        if (e?.message?.includes('timeout') || e?.message?.includes('time')) {
+          uLog('🤖 AI 请求超时（15s），' + (attempt < retry ? '重试中...' : '跳过'), 'warn');
+        } else {
+          uLog('🤖 AI 请求失败: ' + (e?.message || '网络错误') + (attempt < retry ? '，重试中...' : ''), 'warn');
+        }
+        CFG.debug && console.warn('[AI Match] 失败:', e?.message);
+        if (attempt < retry) {
+          await sleep(1000 * (attempt + 1));
+          continue;
+        }
       }
-    } catch (e) {
-      if (e?.message?.includes('timeout') || e?.message?.includes('time')) {
-        uLog('🤖 AI 请求超时（15s），跳过', 'warn');
-      } else {
-        uLog('🤖 AI 请求失败: ' + (e?.message || '网络错误'), 'warn');
-      }
-      CFG.debug && console.warn('[AI Match] 失败:', e?.message);
+    }
+
+    // 连续失败达到阈值，自动禁用 AI
+    if (_aiFailCount >= AI_FAIL_THRESHOLD) {
+      uLog('🤖 AI 连续失败 ' + AI_FAIL_THRESHOLD + ' 次，已自动关闭 AI 开关', 'warn');
+      CFG.aiEnable = false; saveCFG();
     }
     return null;
   }
@@ -1736,6 +1947,17 @@
           <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px">☁ 导入云端</button>
         </div>
         <div style="font-size:10px;color:#888;margin-top:4px">💡 <b>本地</b>：下载到本地，离线可用 | <b>直读云端</b>：实时拉取，无需下载，缓存 5 分钟</div>
+      </div>
+
+      <div class="ata-section-title">自定义域名 <span style="font-size:10px;color:#aaa">（通配符已支持 *.minutestars.com）</span></div>
+      <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <span class="ata-label">添加匹配域名</span>
+        <div style="display:flex;gap:4px;width:100%">
+          <input type="text" id="cfg-custom-domain-input" class="ata-text-input" placeholder="例如：https://example.com" style="flex:1;font-size:12px">
+          <button class="ata-btn blue" id="cfg-add-domain-btn" style="font-size:11px;padding:4px 10px">添加</button>
+        </div>
+        <div id="cfg-custom-domains-list" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
+        <div style="font-size:10px;color:#888;margin-top:2px">💡 脚本会在这些域名上自动运行（需包含协议，如 https://example.com）</div>
       </div>
 
       <div class="ata-section-title">答题报告</div>
@@ -3325,6 +3547,34 @@
     if (aiRow) aiRow.style.opacity = CFG.aiEnable ? '1' : '.4';
     const cloudRow = ge('cfg-cloud-row');
     if (cloudRow) cloudRow.style.opacity = CFG.cloudSyncEnable ? '1' : '.4';
+
+    // v4.6.0 自定义域名列表渲染
+    renderCustomDomains();
+  }
+
+  /** 渲染自定义域名列表（tag + 删除按钮） */
+  function renderCustomDomains() {
+    const list = document.getElementById('cfg-custom-domains-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!CFG.customDomains || !CFG.customDomains.length) {
+      list.innerHTML = '<span style="font-size:10px;color:#aaa">暂无自定义域名</span>';
+      return;
+    }
+    CFG.customDomains.forEach((domain, idx) => {
+      const tag = document.createElement('span');
+      tag.style = 'display:inline-flex;align-items:center;gap:2px;background:#e3f2fd;color:#1565c0;font-size:11px;padding:2px 6px;border-radius:10px;';
+      tag.innerHTML = `${escHtml(domain)} <span data-idx="${idx}" class="cfg-domain-remove" style="cursor:pointer;font-weight:bold;margin-left:2px">&times;</span>`;
+      list.appendChild(tag);
+    });
+    // 绑定删除事件
+    list.querySelectorAll('.cfg-domain-remove').forEach(el => {
+      el.addEventListener('click', function () {
+        const idx = parseInt(this.dataset.idx, 10);
+        CFG.customDomains.splice(idx, 1);
+        renderCustomDomains();
+      });
+    });
   }
 
   /** 从面板控件读取当前值写入 CFG 并持久化 */
@@ -3587,6 +3837,32 @@
     syncSettingsUI();
     const msg = document.getElementById('cfg-save-msg');
     if (msg) { msg.textContent = '↺ 已恢复默认'; setTimeout(() => { msg.textContent = ''; }, 2500); }
+  });
+
+  // v4.6.0 自定义域名：添加按钮
+  document.getElementById('cfg-add-domain-btn')?.addEventListener('click', () => {
+    const input = document.getElementById('cfg-custom-domain-input');
+    if (!input) return;
+    const val = input.value.trim();
+    if (!val) return;
+    // 简单验证：必须以 http:// 或 https:// 开头
+    if (!/^https?:\/\//i.test(val)) {
+      uLog('⚠ 域名格式错误，需包含协议（如 https://example.com）', 'warn');
+      return;
+    }
+    if (!CFG.customDomains) CFG.customDomains = [];
+    if (CFG.customDomains.includes(val)) {
+      uLog('⚠ 域名已存在', 'warn');
+      return;
+    }
+    CFG.customDomains.push(val);
+    input.value = '';
+    renderCustomDomains();
+    uLog('✅ 已添加域名：' + val, 'ok');
+  });
+  // 回车添加域名
+  document.getElementById('cfg-custom-domain-input')?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('cfg-add-domain-btn')?.click();
   });
 
   /* =========================================================
@@ -3957,35 +4233,45 @@
   `);
 
   /* =========================================================
-     直读云端模式：启动时预拉取题库
+     启动时初始化（本地模式异步加载题库到内存）
   ========================================================= */
-  if (CFG.cloudReadMode === 'cloud') {
-    fetchCloudDB().then(() => {
-      _cache.dirty = true; // 云端数据到手后标记缓存脏，重建索引
-      refreshLibCount();
+  (async () => {
+    // v4.6.0 域名检测：只允许在 MinuteStars 或自定义域名上运行
+    const currentHost = location.hostname;
+    const isMinuteStars = /\.minutestars\.com$/i.test(currentHost);
+    const isCustom = (CFG.customDomains || []).some(d => {
+      try { return new URL(d).hostname === currentHost; } catch { return false; }
     });
-  }
+    if (!isMinuteStars && !isCustom) {
+      uLog('⚠ 当前域名不在允许列表中（' + currentHost + '），脚本不运行', 'warn');
+      return;
+    }
 
-  /* =========================================================
-     初始化：检测题目数量
-  ========================================================= */
-  refreshLibCount();
-  setTimeout(() => {
-    const qs = findQContainers();
-    if (qs.length) {
-      uLog('页面就绪，检测到 ' + qs.length + ' 题', 'ok');
-      const statTotalEl = $('#ata-stat-total');
-      if (statTotalEl) statTotalEl.textContent = qs.length;
-      setRunningStatus('✅ ' + qs.length + ' 题已就绪', 'idle');
+    if (CFG.cloudReadMode === 'cloud') {
+      await fetchCloudDB();
     } else {
-      uLog('暂未检测到题目，等待页面加载…', 'warn');
-      setRunningStatus('等待页面加载…', 'idle');
+      await LibraryManager.reload();
     }
-    if (CFG.autoAnswer) {
-      uLog('3 秒后自动开始…', 'warn');
-      setTimeout(runAutoAnswer, 3000);
-    }
-  }, 1500);
+    _cache.dirty = true;
+    refreshLibCount();
+
+    setTimeout(() => {
+      const qs = findQContainers();
+      if (qs.length) {
+        uLog('页面就绪，检测到 ' + qs.length + ' 题', 'ok');
+        const statTotalEl = $('#ata-stat-total');
+        if (statTotalEl) statTotalEl.textContent = qs.length;
+        setRunningStatus('✅ ' + qs.length + ' 题已就绪', 'idle');
+      } else {
+        uLog('暂未检测到题目，等待页面加载…', 'warn');
+        setRunningStatus('等待页面加载…', 'idle');
+      }
+      if (CFG.autoAnswer) {
+        uLog('3 秒后自动开始…', 'warn');
+        setTimeout(runAutoAnswer, 3000);
+      }
+    }, 1500);
+  })();
 
 })();
 
