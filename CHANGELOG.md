@@ -1,4 +1,12 @@
 # Changelog
+## v4.8.17
+### 🐛 修复
+- **修复云端模式来源统计错误（显示全为本地题库）**
+  - 根因：`getSourceStats()` 调用 `this.load()`，云端模式下返回的是已合并云端的缓存，`localDB` 包含了云端题，导致 `stats.cloud` 始终为 0
+  - 修复：`getSourceStats()` 改为直接读 `GM_getValue(DB_KEY)` 原始本地数据，绕过合并缓存
+- **修复拉取云端后 UI 不更新**
+  - `fetchCloudDB()` 成功后新增调用 `refreshLibCount()` 和 `refreshStats()`
+
 ## v4.8.16
 ### 🐛 修复
 - **修复云端模式页面加载时不自动读取云端题库**

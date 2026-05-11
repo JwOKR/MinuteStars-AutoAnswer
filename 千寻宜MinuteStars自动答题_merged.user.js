@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.16
+// @version      4.8.17
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -380,9 +380,10 @@
     /** 统计来源分布，返回 { cloud, local }
      *  本地题库 = 本地存储里的题（本地导入 + 从云端下载到本地的）
      *  云端题库 = 直读云端且不在本地存储的题（仅 cloudReadMode 时存在）
+     *  注意：必须直接读 GM_getValue，不能用 this.load()，因为云端模式下缓存已合并云端数据
      */
     getSourceStats() {
-      const localDB = this.load();
+      const localDB = (() => { try { return JSON.parse(GM_getValue(DB_KEY, '{}')); } catch { return {}; } })();
       let stats = { local: Object.keys(localDB).length, cloud: 0 };
       if (CFG.cloudReadMode === 'cloud' && _cloudCache) {
         // 统计仅在云端缓存中、但不在本地存储的题目
@@ -749,6 +750,9 @@
       // 立即重建缓存，使云端题目生效
       _cache.dirty = true;
       rebuildCache();
+      // 更新 UI 统计和数字
+      refreshLibCount();
+      refreshStats();
       return _cloudCache;
     } catch (e) {
       uLog('❌ 云端题库拉取失败: ' + e.message, 'err');
