@@ -1,12 +1,15 @@
 # Changelog
-## v4.8.32
+## v4.8.33
 ### 🐛 Bugfix
-- **重写 extractParagraphs，正确处理 Word 段落内换行 `<w:cr/>` 和 `<w:br/>`**
-  - 根因：同一个 `<w:p>` 里可能有多个 `<w:t>` 文本块，用 `<w:cr/>` 换行
-  - 旧实现（`getElementsByTagName('w:t')` 直接拼接）会把整段合成一个字符串
-  - 导致题目+选项+答案+解析全挤在一行，正则无法正确分割
-  - 新实现：遍历 `<w:p>` 的 childNodes，遇到 `w:t` 取文本，遇到 `w:cr`/`w:br` 插入 `\n`
-  - 再按 `\n` 分割，确保"解析："在独立行中被正确拦截
+- **extractParagraphs 彻底重写，正确提取 Word 段落内换行**
+  - 根因：v4.8.32 用了 `p.childNodes`，但 `<w:t>` 嵌套在 `<w:r>` 里，根本扫不到，`allTexts` 提取结果为空
+  - 解法：用 `p.getElementsByTagName('*')` 获取所有后代元素（按文档顺序）
+  - 检查 `el.localName`：`t` → 取文本；`cr`/`br` → 插入 `\n`
+  - 最终按 `\n` 分割，`parseQAParagraphs` 能正确识别题目/选项/答案/解析各成一行
+
+## v4.8.32（废弃：实现有误，被 v4.8.33 替代）
+### 🐛 Bugfix
+- 尝试修复 extractParagraphs，但实际实现用了 `p.childNodes`，无法正确提取 `<w:t>` 文本
 
 ## v4.8.31
 ### 🐛 Bugfix
