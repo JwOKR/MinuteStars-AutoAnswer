@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.17
+// @version      4.8.18
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -4096,6 +4096,48 @@
   let submitTickId = null;  // 提交倒计时 interval ID
   let submitRem    = 0;     // 提交倒计时剩余秒数
 
+  function handleSubmitCountdown(minS, maxS) {
+    submitRem = minS + Math.floor(Math.random() * (maxS - minS + 1));
+    uLog('⏳ ' + submitRem + ' 秒后自动提交…（可暂停倒计时）', 'warn');
+    inCountdown = true;
+    const pBtn = $('#ata-pause');
+    if (pBtn) { pBtn.textContent = '⏸ 暂停'; pBtn.className = 'ata-btn yellow'; }
+    const startTick = () => {
+      clearInterval(submitTickId);
+      submitTickId = setInterval(() => {
+        if (paused) {
+          if (inCountdown && submitRem > 0) {
+            setRunningStatus('⏸ 倒计时已暂停（剩余 ' + submitRem + 's）', 'running');
+          }
+          return;
+        }
+        submitRem--;
+        if (inCountdown) {
+          setRunningStatus('⏳ ' + submitRem + ' 秒后提交…', 'running');
+        }
+        if (submitRem <= 0) {
+          clearInterval(submitTickId);
+          submitTickId = null;
+          doSubmit();
+        }
+      }, 1000);
+    };
+    startTick();
+  }
+
+  function updateStatsCards(ok, infer, skip, i, total, libCnt, ruleCnt, aiCnt) {
+    const pct = Math.round((i + 1) / total * 100);
+    setProgress(i + 1, total);
+    const statAns = $c('#ata-stat-answered');
+    const statHit = $c('#ata-stat-hit');
+    const statMiss = $c('#ata-stat-miss');
+    if (statAns)  statAns.textContent  = i + 1;
+    if (statHit)  statHit.textContent   = ok + infer;
+    if (statMiss) statMiss.textContent  = skip;
+    updateHitRate(i + 1, ok + infer, libCnt, ruleCnt, aiCnt);
+    return pct;
+  }
+
   async function runAutoAnswer() {
     if (running) { uLog('已在运行，请勿重复点击', 'warn'); return; }
     running = true;
@@ -4192,17 +4234,8 @@
         addRecentLog(txt, matchedAnswer, matchMethod);
         // v4.7.0 正确率趋势图：记录本题命中情况
         updateAccuracyHistory(matchedAnswer !== null);
-        // 实时更新统计卡片（每题都更新，用 $c 缓存避免重复查询）
-        const pct = Math.round((i + 1) / containers.length * 100);
-        setProgress(i + 1, containers.length);
-        const statAns = $c('#ata-stat-answered');
-        const statHit = $c('#ata-stat-hit');
-        const statMiss = $c('#ata-stat-miss');
-        if (statAns)  statAns.textContent  = i + 1;
-        if (statHit)  statHit.textContent   = ok + infer;
-        if (statMiss) statMiss.textContent  = skip;
-        // 更新命中率 & 各方式统计
-        updateHitRate(i + 1, ok + infer, libCnt, ruleCnt, aiCnt);
+        // 实时更新统计卡片
+        const pct = updateStatsCards(ok, infer, skip, i, containers.length, libCnt, ruleCnt, aiCnt);
         // 记录答题速度
         const elapsed = Date.now() - _speedStart;
         _speedTimes.push(elapsed);
@@ -4225,37 +4258,7 @@
       gmNotify('答题完成', '命中 ' + (ok+infer) + ' 题，跳过 ' + skip + ' 题');
 
       if (CFG.autoSubmit) {
-        const [minS, maxS] = [CFG.submitDelayMin, CFG.submitDelayMax];
-        submitRem = minS + Math.floor(Math.random() * (maxS - minS + 1));
-        uLog('⏳ ' + submitRem + ' 秒后自动提交…（可暂停倒计时）', 'warn');
-        inCountdown = true;
-        const pBtn = $('#ata-pause');
-        if (pBtn) {
-          pBtn.textContent = '⏸ 暂停';
-          pBtn.className = 'ata-btn yellow';
-        }
-        const startTick = () => {
-          clearInterval(submitTickId);
-          submitTickId = setInterval(() => {
-            if (paused) {
-              // 暂停时每秒刷新剩余秒数显示
-              if (inCountdown && submitRem > 0) {
-                setRunningStatus('⏸ 倒计时已暂停（剩余 ' + submitRem + 's）', 'running');
-              }
-              return;
-            }
-            submitRem--;
-            if (inCountdown) {
-              setRunningStatus('⏳ ' + submitRem + ' 秒后提交…', 'running');
-            }
-            if (submitRem <= 0) {
-              clearInterval(submitTickId);
-              submitTickId = null;
-              doSubmit();
-            }
-          }, 1000);
-        };
-        startTick();
+        handleSubmitCountdown(CFG.submitDelayMin, CFG.submitDelayMax);
       }
     } catch (e) {
       uLog('运行出错: ' + e.message, 'err');

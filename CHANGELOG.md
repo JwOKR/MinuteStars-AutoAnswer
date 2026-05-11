@@ -1,4 +1,11 @@
 # Changelog
+## v4.8.18
+### ♻️ 重构
+- **拆分 runAutoAnswer()**
+  - 提取 `handleSubmitCountdown(minS, maxS)` 函数（提交倒计时逻辑）
+  - 提取 `updateStatsCards(ok, infer, skip, i, total, libCnt, ruleCnt, aiCnt)` 函数（统计卡片实时更新）
+  - 主流程函数从 183 行缩减至约 120 行
+
 ## v4.8.17
 ### 🐛 修复
 - **修复云端模式来源统计错误（显示全为本地题库）**
