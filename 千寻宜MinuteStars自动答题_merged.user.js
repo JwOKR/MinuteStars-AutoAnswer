@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.31
+// @version      4.8.32
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3297,11 +3297,25 @@
    * @returns {{added, skipped, errors, preview[]}}
    */
   function extractParagraphs(doc) {
+    // 正确处理 <w:cr/> 和 <w:br/> 段落内换行
+    // 同一个 <w:p> 里可能有多个 <w:t>，它们之间可能有 <w:cr/> 或 <w:br/>
     const paras = doc.getElementsByTagNameNS('*', 'p');
     return Array.from(paras).map(p => {
-      const tNodes = p.getElementsByTagNameNS('*', 't');
-      return Array.from(tNodes).map(n => n.textContent || '').join('');
-    });
+      let text = '';
+      for (const child of p.childNodes) {
+        if (child.nodeType === 1) { // ELEMENT_NODE
+          const tag = child.tagName || child.nodeName || '';
+          if (tag.endsWith(':t') || tag === 'w:t') {
+            text += child.textContent || '';
+          } else if (tag.endsWith(':cr') || tag.endsWith(':br')) {
+            text += '\n';
+          }
+        } else if (child.nodeType === 3) { // TEXT_NODE（w:t 的文本内容已通过 w:t 元素获取，这里跳过）
+          // skip
+        }
+      }
+      return text;
+    }).map(s => s.split('\n').map(l => l.trim()).filter(l => l).join('\n'));
   }
 
   function parseQAFromParagraphs(allTexts, db) {
