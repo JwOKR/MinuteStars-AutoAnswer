@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.28
+// @version      4.8.29
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3318,12 +3318,9 @@
       if (!/^\d+[\.、\s　]/.test(line.trim())) continue;
 
       const qLines = [line];
-      let foundAnswer = false;
       for (let j = i + 1; j < allTexts.length; j++) {
         const nextLine = allTexts[j];
         const trimmed = nextLine.trim();
-        // 找到答案行后，后续所有行（解析、解释列举等）一律不收集
-        if (foundAnswer) break;
         // 跳过题目分类标题
         if (/^[一二三四五六七八九][、．.\s]/.test(trimmed)) break;
         if (/^第[一二三四五六七八九\d][部分章节\s]/.test(trimmed)) break;
@@ -3331,9 +3328,12 @@
         if (/^\d+[\.、\s　]/.test(trimmed)) break;
         // 空行 → 停止收集
         if (!trimmed) break;
-        // 答案行或解析行 → 收集该行后停止（设置 flag，防止解析内容混入）
-        if (/^(答案|解析)[：:]/.test(trimmed)) { qLines.push(nextLine); foundAnswer = true; continue; }
-        // 选项行（A. B. C. D.）也收集（后续清洗会过滤）
+        // 答案行或解析行 → 收集该行后立即停止，不收集任何后续行
+        // 同时处理"解析"出现在行中任意位置的情况
+        if (/^(答案|解析)[：:]/.test(trimmed) || /解析[：:]/.test(trimmed)) {
+          qLines.push(nextLine);
+          break;
+        }
         qLines.push(nextLine);
       }
 
@@ -3342,9 +3342,10 @@
       if (!ansMatch) continue;
 
       let qText = fullText
-        .replace(/答案[：:]\s*[A-Za-z,，]+.*$/, '')
-        .replace(/解析[：:].*$/gm, '')
-        .replace(/【解析】.*$/gm, '')
+        .replace(/答案[：:][^\n]*/g, '')       // 移除"答案：..."（到行尾）
+        .replace(/正确答案[：:][^\n]*/g, '')   // 移除"正确答案：..."（到行尾）
+        .replace(/解析[：:][^\n]*/g, '')       // 移除"解析：..."（到行尾，无论是否在行首）
+        .replace(/【解析】[^\n]*/g, '')        // 移除【解析】...（到行尾）
         .trim()
         .replace(/^\d+[\.、\s　]+/, '')
         .trim();

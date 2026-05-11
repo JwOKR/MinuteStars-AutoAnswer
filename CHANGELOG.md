@@ -1,4 +1,12 @@
 # Changelog
+## v4.8.29
+### 🐛 Bugfix
+- **parseQAFromParagraphs 答案/解析行处理逻辑重写**
+  - 遇到答案行或解析行后立即 `break`（不再使用 foundAnswer 标志 + continue 的两轮判断）
+  - qText 清洗改用 `[^\n]*`（匹配到行尾），更激进地移除"答案/正确答案/解析/【解析】"内容
+  - 新增支持"正确答案："格式的答案行
+  - 新增匹配行中任意位置的"解析："（不仅限于行首），防止解析内容漏网
+
 ## v4.8.28
 ### 🐛 Bugfix
 - **重写 parseQAFromParagraphs 内层循环，彻底防止解析内容混入题目**
