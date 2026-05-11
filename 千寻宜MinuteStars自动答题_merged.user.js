@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.23
+// @version      4.8.24
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3309,11 +3309,17 @@
     for (let i = 0; i < allTexts.length; i++) {
       const line = allTexts[i];
       if (!line.trim()) continue;
+      // 跳过题目分类标题（一、单选题 / 二、多选题 / 三、判断题 等）
+      if (/^[一二三四五六七八九][、．.\s]/.test(line.trim())) continue;
+      if (/^第[一二三四五六七八九\d][部分章节\s]/.test(line.trim())) continue;
       if (!/^\d+[\.、\s　]/.test(line)) continue;
 
       const qLines = [line];
       for (let j = i + 1; j < allTexts.length; j++) {
         const nextLine = allTexts[j];
+        // 跳过题目分类标题（防止被当作题目内容收集）
+        if (/^[一二三四五六七八九][、．.\s]/.test(nextLine.trim())) break;
+        if (/^第[一二三四五六七八九\d][部分章节\s]/.test(nextLine.trim())) break;
         if (/^\d+[\.、\s　]/.test(nextLine)) break;
         if (!nextLine.trim()) break;
         if (/^(答案|解析)[：:]/.test(nextLine.trim())) break;
@@ -3327,6 +3333,7 @@
       let qText = fullText
         .replace(/答案[：:]\s*[A-Za-z,，]+.*$/, '')
         .replace(/解析[：:].*$/gm, '')
+        .replace(/【解析】.*$/gm, '')
         .trim()
         .replace(/^\d+[\.、\s　]+/, '')
         .trim();
