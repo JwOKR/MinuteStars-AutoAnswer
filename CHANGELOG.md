@@ -1,4 +1,12 @@
 # Changelog
+## v4.8.19
+### ♻️ 重构
+- **拆分 aiMatch()**
+  - 提取 `buildAIPayload(qText, optTexts)` 函数（按模型构建请求体/请求头）
+  - 提取 `doAIRequest(url, headers, body)` 函数（执行 XHR 请求，非 200 时 reject）
+  - 提取 `parseAIResponse(resp)` 函数（按模型解析 AI 响应，返回 `{status,result}`）
+  - 主函数从 142 行缩减至约 60 行，重试/错误处理逻辑更清晰
+
 ## v4.8.18
 ### ♻️ 重构
 - **拆分 runAutoAnswer()**

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.18
+// @version      4.8.19
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -1159,6 +1159,56 @@
   const AI_FAIL_THRESHOLD = 5;     // 连续失败 N 次后自动禁用 AI
   let _aiFailCount = 0;           // 连续失败计数器
 
+  function buildAIPayload(qText, optTexts) {
+    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
+    const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
+    const modelName = modelCfg.model || '';
+    let requestBody, headers = { 'Content-Type': 'application/json' }, url = endpoint;
+
+    const prompt = `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。`;
+
+    if (CFG.aiModel === 'claude') {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+      requestBody = JSON.stringify({ model: modelName, max_tokens: 32, messages: [{ role: 'user', content: prompt }] });
+    } else if (CFG.aiModel === 'gemini') {
+      url = endpoint + '?key=' + apiKey;
+      requestBody = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 32, temperature: 0.1 } });
+    } else {
+      headers['Authorization'] = 'Bearer ' + apiKey;
+      requestBody = JSON.stringify({ model: modelName, messages: [{ role: 'user', content: prompt }], max_tokens: 32, temperature: 0.1 });
+    }
+    return { url, headers, body: requestBody };
+  }
+
+  function parseAIResponse(resp) {
+    if (resp.status !== 200) return { status: resp.status, result: null };
+    const data = JSON.parse(resp.responseText);
+    let content = '';
+    if (CFG.aiModel === 'claude') content = (data.content?.[0]?.text || '').trim();
+    else if (CFG.aiModel === 'gemini') content = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    else content = (data.choices?.[0]?.message?.content || '').trim();
+    const match = content.match(/^[A-Z](?:,[A-Z])*$/i);
+    return match ? { status: 200, result: match[0].toUpperCase() } : { status: 200, result: null };
+  }
+
+  async function doAIRequest(url, headers, body) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+      xhr.timeout = 15000;
+      xhr.onload = () => {
+        if (xhr.status === 200) resolve(xhr);
+        else { const err = new Error('HTTP ' + xhr.status); err.status = xhr.status; err.responseText = xhr.responseText; reject(err); }
+      };
+      xhr.onerror = () => reject(new Error('network error'));
+      xhr.ontimeout = () => reject(new Error('timeout'));
+      xhr.send(body);
+    });
+  }
+
   async function aiMatch(qText, inputs) {
     if (!CFG.aiEnable || !CFG.aiModel) return null;
     const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
@@ -1180,86 +1230,32 @@
     const retry = 3;
     for (let attempt = 0; attempt <= retry; attempt++) {
       try {
-        const resp = await new Promise((resolve, reject) => {
-          const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-          const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
-          const apiKey = modelCfg.apiKey || CFG.aiApiKey;
-          const modelName = modelCfg.model || '';
-          let requestBody, headers = { 'Content-Type': 'application/json' };
+        const { url, headers, body } = buildAIPayload(qText, optTexts);
+        const resp = await doAIRequest(url, headers, body);
+        const { status, result } = parseAIResponse(resp);
 
-          // 根据模型构建请求体和请求头
-          if (CFG.aiModel === 'claude') {
-            headers['x-api-key'] = apiKey;
-            headers['anthropic-version'] = '2023-06-01';
-            requestBody = JSON.stringify({
-              model: modelName,
-              max_tokens: 32,
-              messages: [{ role: 'user', content: `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。` }],
-            });
-          } else if (CFG.aiModel === 'gemini') {
-            // Gemini 不需要 Authorization header，apiKey 在 URL 参数中
-            const geminiUrl = endpoint + '?key=' + apiKey;
-            requestBody = JSON.stringify({
-              contents: [{ parts: [{ text: `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。` }] }],
-              generationConfig: { maxOutputTokens: 32, temperature: 0.1 },
-            });
-            // 重新赋值 endpoint 为带 key 的 URL
-            // 注意：xhr.open 需要使用 geminiUrl
-            var _geminiUrl = geminiUrl;
-          } else {
-            // OpenAI 兼容格式（DeepSeek, OpenAI, 硅基流动）
-            const prompt = `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。`;
-            headers['Authorization'] = 'Bearer ' + apiKey;
-            requestBody = JSON.stringify({
-              model: modelName,
-              messages: [{ role: 'user', content: prompt }],
-              max_tokens: 32,
-              temperature: 0.1,
-            });
-          }
-
-          const xhr = new XMLHttpRequest();
-          const finalUrl = CFG.aiModel === 'gemini' ? _geminiUrl : endpoint;
-          xhr.open('POST', finalUrl, true);
-          for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
-          xhr.timeout = 15000;
-          xhr.onload = () => resolve(xhr);
-          xhr.onerror = reject;
-          xhr.ontimeout = reject;
-          xhr.send(requestBody);
-        });
-
-        if (resp.status === 200) {
-          const data = JSON.parse(resp.responseText);
-          let content = '';
-          // 根据模型解析响应
-          if (CFG.aiModel === 'claude') {
-            content = (data.content?.[0]?.text || '').trim();
-          } else if (CFG.aiModel === 'gemini') {
-            content = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-          } else {
-            content = (data.choices?.[0]?.message?.content || '').trim();
-          }
-          const match = content.match(/^[A-Z](?:,[A-Z])*$/i);
-          if (match) {
-            const result = match[0].toUpperCase();
-            _aiCache.set(cacheKey, result);
-            _aiFailCount = 0;
-            CFG.debug && console.log('[AI Match]', CFG.aiModel, qText.substring(0,30), '->', result);
-            return result;
-          }
-          // 返回格式不对，不算失败，直接返回 null
+        if (result) {
+          _aiCache.set(cacheKey, result);
           _aiFailCount = 0;
-          return null;
+          CFG.debug && console.log('[AI Match]', CFG.aiModel, qText.substring(0,30), '->', result);
+          return result;
         }
-
-        if (resp.status === 401) {
+        if (status !== 200) {
+          const err = new Error('HTTP ' + status);
+          err.status = status;
+          throw err;
+        }
+        // status === 200 但没有解析到结果
+        _aiFailCount = 0;
+        return null;
+      } catch (e) {
+        if (e?.status === 401) {
           uLog('🤖 AI Key 无效（401），已自动关闭 AI', 'err');
           CFG.aiEnable = false; saveCFG();
           return null;
         }
 
-        if (resp.status === 429) {
+        if (e?.status === 429) {
           _aiFailCount++;
           if (attempt < retry) {
             uLog('🤖 AI 频率限制（429），' + (1000 * Math.pow(2, attempt)) + 'ms 后重试', 'warn');
@@ -1273,23 +1269,11 @@
         // 其他 HTTP 错误
         _aiFailCount++;
         if (attempt < retry) {
-          CFG.debug && console.warn('[AI Match] HTTP ' + resp.status + '，重试中...');
+          CFG.debug && console.warn('[AI Match] HTTP ' + e?.status + '，重试中...');
           await sleep(1000 * (attempt + 1));
           continue;
         }
-        CFG.debug && console.warn('[AI Match] HTTP ' + resp.status + ':', resp.responseText?.substring(0,100));
-      } catch (e) {
-        _aiFailCount++;
-        if (e?.message?.includes('timeout') || e?.message?.includes('time')) {
-          uLog('🤖 AI 请求超时（15s），' + (attempt < retry ? '重试中...' : '跳过'), 'warn');
-        } else {
-          uLog('🤖 AI 请求失败: ' + (e?.message || '网络错误') + (attempt < retry ? '，重试中...' : ''), 'warn');
-        }
-        CFG.debug && console.warn('[AI Match] 失败:', e?.message);
-        if (attempt < retry) {
-          await sleep(1000 * (attempt + 1));
-          continue;
-        }
+        CFG.debug && console.warn('[AI Match] HTTP ' + e?.status + ':', e?.responseText?.substring(0,100));
       }
     }
 
@@ -1298,7 +1282,6 @@
       uLog('🤖 AI 连续失败 ' + AI_FAIL_THRESHOLD + ' 次，已自动关闭 AI 开关', 'warn');
       CFG.aiEnable = false; saveCFG();
     }
-    return null;
     return null;
   }
 
