@@ -1,4 +1,11 @@
 # Changelog
+## v4.8.16
+### 🐛 修复
+- **修复云端模式页面加载时不自动读取云端题库**
+  - 根因：`fetchCloudDB()` 只在「保存设置」时调用，页面初始化（IIFE）时没有触发
+  - 在初始化流程（第5058行附近）加入：`if (CFG.cloudReadMode === 'cloud') { fetchCloudDB(); }`
+  - 确保页面加载后云端题库立即开始拉取
+
 ## v4.8.15
 ### 🐛 修复
 - **修复分享到 Gitee Gist 失败（HTTP 400 Bad Request）**
