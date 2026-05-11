@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.25
+// @version      4.8.26
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -2643,9 +2643,9 @@
           <input type="text" id="cfg-cloud-gist-id" class="ata-text-input" placeholder="首次上传后自动填充" style="width:100%;box-sizing:border-box">
         </div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-          <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px">⬆ 上传题库（合并）</button>
-          <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px">⬇ 下载题库（覆盖）</button>
-          <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px">☁ 导入云端</button>
+          <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px" title="上传本地题库到云端 Gist，与云端已有题目合并去重，本地题目优先保留">⬆ 上传题库（合并）</button>
+          <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px" title="从云端 Gist 下载题库，覆盖本地所有题目（云端为唯一权威来源）">⬇ 下载题库（覆盖）</button>
+          <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px" title="将云端 Gist 题库追加导入到本地（不影响云端，仅本地新增）">☁ 导入云端</button>
         </div>
         <div style="font-size:10px;color:#888;margin-top:4px">💡 <b>本地</b>：下载到本地，离线可用 | <b>直读云端</b>：实时拉取，无需下载，缓存 5 分钟</div>
       </div>
