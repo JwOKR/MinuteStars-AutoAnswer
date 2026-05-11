@@ -1,4 +1,11 @@
 # Changelog
+## v4.8.22
+### 🐛 Bugfix
+- **恢复 v4.8.21 误注释的函数**
+  - `debugScan`、`collectAnswers` 被事件监听器调用（`addEventListener('click', ...)`），注释后导致 `ReferenceError`
+  - 已恢复全部 6 个函数：`_idleWrap`、`aiValidateAnswer`、`aiAnalyzeWrongAnswer`、`doSave`、`collectAnswers`、`debugScan`
+  - v4.8.21 的"死代码"判断有误，这些函数均有调用点
+
 ## v4.8.21
 ### 🧹 清理
 - **注释死代码（先观察再决定是否删除）**

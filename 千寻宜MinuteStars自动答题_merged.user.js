@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.21
+// @version      4.8.22
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -987,20 +987,20 @@
   /** requestIdleCallback 分帧执行（兼容无支持的环境 fallback setTimeout）
    *  ⚡ v4.5.39：大批量题库遍历时分帧，防止卡顿主线程
    */
-// (DEAD)   function _idleWrap(fn, onProgress) {
-// (DEAD)     return new Promise(resolve => {
-// (DEAD)       const deadline = { timeRemaining: () => 16, didTimeout: false };
-// (DEAD)       const _run = () => {
-// (DEAD)         const r = fn(deadline);
-// (DEAD)         if (r === false) { // 返回 false 表示未完成，需要继续
-// (DEAD)           requestIdleCallback ? requestIdleCallback(_run, { timeout: 500 }) : setTimeout(_run, 20);
-// (DEAD)         } else {
-// (DEAD)           resolve(r);
-// (DEAD)         }
-// (DEAD)       };
-// (DEAD)       requestIdleCallback ? requestIdleCallback(_run, { timeout: 1000 }) : setTimeout(_run, 0);
-// (DEAD)     });
-// (DEAD)   }
+  function _idleWrap(fn, onProgress) {
+    return new Promise(resolve => {
+      const deadline = { timeRemaining: () => 16, didTimeout: false };
+      const _run = () => {
+        const r = fn(deadline);
+        if (r === false) { // 返回 false 表示未完成，需要继续
+          requestIdleCallback ? requestIdleCallback(_run, { timeout: 500 }) : setTimeout(_run, 20);
+        } else {
+          resolve(r);
+        }
+      };
+      requestIdleCallback ? requestIdleCallback(_run, { timeout: 1000 }) : setTimeout(_run, 0);
+    });
+  }
 
   /** 精确 + 模糊双重匹配，返回答案字符串或 null
    *  ⚡ v4.5.39：
@@ -1365,104 +1365,104 @@
      - aiValidateAnswer：用 AI 验证题库答案是否正确
      - aiAnalyzeWrongAnswer：分析错题原因并给出学习建议
   ========================================================= */
-// (DEAD)   async function aiValidateAnswer(question, answer, inputs) {
-// (DEAD)     if (!CFG.aiEnable || !CFG.aiModel) return null;
-// (DEAD)     const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-// (DEAD)     const apiKey = modelCfg.apiKey || CFG.aiApiKey;
-// (DEAD)     if (!apiKey) return null;
-// (DEAD) 
-// (DEAD)     const optTexts = inputs.map(i => {
-// (DEAD)       const label = i.closest('label') || i.parentElement;
-// (DEAD)       return label ? label.textContent.replace(/\s+/g, ' ').trim() : (i.value || '');
-// (DEAD)     });
-// (DEAD)     const prompt = `请验证以下题目的正确答案是否正确：
-// (DEAD) 
-// (DEAD) 题目：${question}
-// (DEAD) 选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}
-// (DEAD) 题库答案：${answer}
-// (DEAD) 
-// (DEAD) 请判断题库答案是否正确。如果正确回复"正确"，如果错误回复"错误：正确答案应为 X"，其中 X 是正确选项字母。`;
-// (DEAD) 
-// (DEAD)     try {
-// (DEAD)       const resp = await aiMatch(question, inputs); // 复用 aiMatch 的 AI 请求逻辑
-// (DEAD)       if (!resp) {
-        // 直接调用 AI API
-// (DEAD)         const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
-// (DEAD)         const modelName = modelCfg.model || '';
-// (DEAD)         const requestBody = JSON.stringify({
-// (DEAD)           model: modelName,
-// (DEAD)           messages: [{ role: 'user', content: prompt }],
-// (DEAD)           max_tokens: 64,
-// (DEAD)           temperature: 0.1,
-// (DEAD)         });
-// (DEAD)         const data = await new Promise((resolve, reject) => {
-// (DEAD)           const xhr = new XMLHttpRequest();
-// (DEAD)           xhr.open('POST', endpoint, true);
-// (DEAD)           xhr.setRequestHeader('Content-Type', 'application/json');
-// (DEAD)           xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
-// (DEAD)           xhr.timeout = 15000;
-// (DEAD)           xhr.onload = () => resolve(JSON.parse(xhr.responseText));
-// (DEAD)           xhr.onerror = () => reject(new Error('网络错误'));
-// (DEAD)           xhr.ontimeout = () => reject(new Error('超时'));
-// (DEAD)           xhr.send(requestBody);
-// (DEAD)         });
-// (DEAD)         const content = (data.choices?.[0]?.message?.content || '').trim();
-// (DEAD)         return content.includes('正确') ? { valid: true, message: content } : { valid: false, message: content };
-// (DEAD)       }
-// (DEAD)       return { valid: true, message: 'AI 已匹配答案 ' + resp };
-// (DEAD)     } catch (e) {
-// (DEAD)       uLog('🤖 AI 验证失败: ' + e.message, 'warn');
-// (DEAD)       return null;
-// (DEAD)     }
-// (DEAD)   }
+  async function aiValidateAnswer(question, answer, inputs) {
+    if (!CFG.aiEnable || !CFG.aiModel) return null;
+    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
+    if (!apiKey) return null;
 
-// (DEAD)   async function aiAnalyzeWrongAnswer(question, userAnswer, correctAnswer) {
-// (DEAD)     if (!CFG.aiEnable || !CFG.aiModel) return null;
-// (DEAD)     const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-// (DEAD)     const apiKey = modelCfg.apiKey || CFG.aiApiKey;
-// (DEAD)     if (!apiKey) return null;
-// (DEAD) 
-// (DEAD)     const prompt = `请分析这道错题：
-// (DEAD) 
-// (DEAD) 题目：${question}
-// (DEAD) 我的答案：${userAnswer || '未作答'}
-// (DEAD) 正确答案：${correctAnswer}
-// (DEAD) 
-// (DEAD) 请简要分析：
-// (DEAD) 1. 我为什么答错了？
-// (DEAD) 2. 正确的解题思路是什么？
-// (DEAD) 3. 相关知识点有哪些？
-// (DEAD) 4. 如何避免再犯类似错误？
-// (DEAD) 
-// (DEAD) 请用简洁的中文回答，每个问题不超过 50 字。`;
-// (DEAD) 
-// (DEAD)     try {
-// (DEAD)       const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
-// (DEAD)       const modelName = modelCfg.model || '';
-// (DEAD)       const requestBody = JSON.stringify({
-// (DEAD)         model: modelName,
-// (DEAD)         messages: [{ role: 'user', content: prompt }],
-// (DEAD)         max_tokens: 256,
-// (DEAD)         temperature: 0.3,
-// (DEAD)       });
-// (DEAD)       const data = await new Promise((resolve, reject) => {
-// (DEAD)         const xhr = new XMLHttpRequest();
-// (DEAD)         xhr.open('POST', endpoint, true);
-// (DEAD)         xhr.setRequestHeader('Content-Type', 'application/json');
-// (DEAD)         xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
-// (DEAD)         xhr.timeout = 20000;
-// (DEAD)         xhr.onload = () => resolve(JSON.parse(xhr.responseText));
-// (DEAD)         xhr.onerror = () => reject(new Error('网络错误'));
-// (DEAD)         xhr.ontimeout = () => reject(new Error('超时'));
-// (DEAD)         xhr.send(requestBody);
-// (DEAD)       });
-// (DEAD)       const content = (data.choices?.[0]?.message?.content || '').trim();
-// (DEAD)       return content;
-// (DEAD)     } catch (e) {
-// (DEAD)       uLog('🤖 AI 分析失败: ' + e.message, 'warn');
-// (DEAD)       return null;
-// (DEAD)     }
-// (DEAD)   }
+    const optTexts = inputs.map(i => {
+      const label = i.closest('label') || i.parentElement;
+      return label ? label.textContent.replace(/\s+/g, ' ').trim() : (i.value || '');
+    });
+    const prompt = `请验证以下题目的正确答案是否正确：
+
+题目：${question}
+选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}
+题库答案：${answer}
+
+请判断题库答案是否正确。如果正确回复"正确"，如果错误回复"错误：正确答案应为 X"，其中 X 是正确选项字母。`;
+
+    try {
+      const resp = await aiMatch(question, inputs); // 复用 aiMatch 的 AI 请求逻辑
+      if (!resp) {
+        // 直接调用 AI API
+        const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
+        const modelName = modelCfg.model || '';
+        const requestBody = JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 64,
+          temperature: 0.1,
+        });
+        const data = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', endpoint, true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
+          xhr.timeout = 15000;
+          xhr.onload = () => resolve(JSON.parse(xhr.responseText));
+          xhr.onerror = () => reject(new Error('网络错误'));
+          xhr.ontimeout = () => reject(new Error('超时'));
+          xhr.send(requestBody);
+        });
+        const content = (data.choices?.[0]?.message?.content || '').trim();
+        return content.includes('正确') ? { valid: true, message: content } : { valid: false, message: content };
+      }
+      return { valid: true, message: 'AI 已匹配答案 ' + resp };
+    } catch (e) {
+      uLog('🤖 AI 验证失败: ' + e.message, 'warn');
+      return null;
+    }
+  }
+
+  async function aiAnalyzeWrongAnswer(question, userAnswer, correctAnswer) {
+    if (!CFG.aiEnable || !CFG.aiModel) return null;
+    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
+    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
+    if (!apiKey) return null;
+
+    const prompt = `请分析这道错题：
+
+题目：${question}
+我的答案：${userAnswer || '未作答'}
+正确答案：${correctAnswer}
+
+请简要分析：
+1. 我为什么答错了？
+2. 正确的解题思路是什么？
+3. 相关知识点有哪些？
+4. 如何避免再犯类似错误？
+
+请用简洁的中文回答，每个问题不超过 50 字。`;
+
+    try {
+      const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
+      const modelName = modelCfg.model || '';
+      const requestBody = JSON.stringify({
+        model: modelName,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 256,
+        temperature: 0.3,
+      });
+      const data = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', endpoint, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
+        xhr.timeout = 20000;
+        xhr.onload = () => resolve(JSON.parse(xhr.responseText));
+        xhr.onerror = () => reject(new Error('网络错误'));
+        xhr.ontimeout = () => reject(new Error('超时'));
+        xhr.send(requestBody);
+      });
+      const content = (data.choices?.[0]?.message?.content || '').trim();
+      return content;
+    } catch (e) {
+      uLog('🤖 AI 分析失败: ' + e.message, 'warn');
+      return null;
+    }
+  }
 
   /* =========================================================
       GitHub Gist 云同步
@@ -3892,12 +3892,12 @@
   /**
    * 保存答题（不交卷），用于答题中途保存进度
    */
-// (DEAD)   function doSave() {
+  function doSave() {
     // MinuteStars 专属：#btnSavePapers（保存答题按钮）
-// (DEAD)     const saveBtn = $('#btnSavePapers');
-// (DEAD)     if (saveBtn) { uLog('💾 保存答题进度', 'ok'); saveBtn.click(); return; }
-// (DEAD)     uLog('⚠️ 未找到保存按钮', 'warn');
-// (DEAD)   }
+    const saveBtn = $('#btnSavePapers');
+    if (saveBtn) { uLog('💾 保存答题进度', 'ok'); saveBtn.click(); return; }
+    uLog('⚠️ 未找到保存按钮', 'warn');
+  }
 
   function doSubmit() {
     // 清理倒计时状态
@@ -3943,118 +3943,118 @@
      <span class="answer-badge reference">正确答案</span>
      同级紧邻的 <span class="ml-l"> 文本
   ========================================================= */
-// (DEAD)   function collectAnswers() {
-// (DEAD)     uLog('开始采集答案…', 'info');
-// (DEAD)     const containers = findQContainers();
-// (DEAD)     let cnt = 0, skip = 0;
-// (DEAD)     containers.forEach(c => {
-// (DEAD)       const qText = getQText(c);
-// (DEAD)       if (!qText || qText.length < 4) { skip++; return; }
-// (DEAD) 
+  function collectAnswers() {
+    uLog('开始采集答案…', 'info');
+    const containers = findQContainers();
+    let cnt = 0, skip = 0;
+    containers.forEach(c => {
+      const qText = getQText(c);
+      if (!qText || qText.length < 4) { skip++; return; }
+
       /** 策略一：MinuteStars 结果页结构（高优先级） */
-// (DEAD)       const refBadge = c.querySelector('.answer-badge.reference');
-// (DEAD)       let answer = null;
-// (DEAD)       if (refBadge) {
+      const refBadge = c.querySelector('.answer-badge.reference');
+      let answer = null;
+      if (refBadge) {
         // 正确答案 = reference badge 后面紧邻的 .ml-l 元素
-// (DEAD)         let sibling = refBadge.nextElementSibling;
-// (DEAD)         while (sibling) {
-// (DEAD)           if (sibling.classList && sibling.classList.contains('ml-l')) {
-// (DEAD)             const txt = (sibling.textContent || '').trim().toUpperCase();
-// (DEAD)             if (/^[A-Z]$/.test(txt)) { answer = txt; break; }
+        let sibling = refBadge.nextElementSibling;
+        while (sibling) {
+          if (sibling.classList && sibling.classList.contains('ml-l')) {
+            const txt = (sibling.textContent || '').trim().toUpperCase();
+            if (/^[A-Z]$/.test(txt)) { answer = txt; break; }
             // .ml-l 里可能还有子 span，递归取直接文本
-// (DEAD)             const direct = Array.from(sibling.childNodes)
-// (DEAD)               .filter(n => n.nodeType === Node.TEXT_NODE)
-// (DEAD)               .map(n => n.textContent.trim().toUpperCase())
-// (DEAD)               .join('');
-// (DEAD)             if (/[A-Z]/.test(direct)) { answer = direct.match(/[A-Z]/)[0]; break; }
-// (DEAD)           }
-// (DEAD)           sibling = sibling.nextElementSibling;
-// (DEAD)         }
+            const direct = Array.from(sibling.childNodes)
+              .filter(n => n.nodeType === Node.TEXT_NODE)
+              .map(n => n.textContent.trim().toUpperCase())
+              .join('');
+            if (/[A-Z]/.test(direct)) { answer = direct.match(/[A-Z]/)[0]; break; }
+          }
+          sibling = sibling.nextElementSibling;
+        }
         // 兜底：reference badge 的父级 .mt-1 下的所有直接文本节点
-// (DEAD)         if (!answer) {
-// (DEAD)           const mt1 = refBadge.closest('.mt-1');
-// (DEAD)           if (mt1) {
-// (DEAD)             const direct = Array.from(mt1.childNodes)
-// (DEAD)               .filter(n => n.nodeType === Node.TEXT_NODE)
-// (DEAD)               .map(n => n.textContent.trim().toUpperCase())
-// (DEAD)               .join('');
-// (DEAD)             if (/[A-Z]/.test(direct)) answer = direct.match(/[A-Z]/)[0];
-// (DEAD)           }
-// (DEAD)         }
-// (DEAD)       }
-// (DEAD) 
+        if (!answer) {
+          const mt1 = refBadge.closest('.mt-1');
+          if (mt1) {
+            const direct = Array.from(mt1.childNodes)
+              .filter(n => n.nodeType === Node.TEXT_NODE)
+              .map(n => n.textContent.trim().toUpperCase())
+              .join('');
+            if (/[A-Z]/.test(direct)) answer = direct.match(/[A-Z]/)[0];
+          }
+        }
+      }
+
       /** 策略二：其他批改页通用标记（无 reference badge 时退化） */
-// (DEAD)       if (!answer) {
-// (DEAD)         const inputs = Array.from(c.querySelectorAll('input[type="radio"],input[type="checkbox"]'));
-// (DEAD)         const correct = inputs.filter(i => {
-// (DEAD)           const p = i.closest('label,li,div,td,tr');
-// (DEAD)           if (!p) return false;
-// (DEAD)           if (i.getAttribute('data-correct') === 'true' || i.getAttribute('data-answer') === 'true') return true;
-// (DEAD)           const cls = (p.className || '').toLowerCase();
-// (DEAD)           if (/\b(correct|right|answer-right|true|正确)\b/.test(cls)) return true;
-// (DEAD)           const cs = getComputedStyle(p);
-// (DEAD)           const tc = cs.color;
-// (DEAD)           if (/^rgb\(\s*0\s*,\s*(?:6\d|7\d|8\d|9\d|1[012]\d)\s*,\s*0\s*\)$/.test(tc)) return true;
-// (DEAD)           if (/^rgb\(\s*0\s*,\s*(?:1[2-9]\d|2\d{2})\s*,\s*(?:0|6\d|7\d|8\d)\s*\)$/.test(tc)) return true;
-// (DEAD)           return false;
-// (DEAD)         });
-// (DEAD)         if (correct.length > 0) {
-// (DEAD)           answer = correct.map(inp => {
-// (DEAD)             const v = (inp.value || '').trim().toUpperCase();
-// (DEAD)             if (/^[A-Z]$/.test(v)) return v;
-// (DEAD)             const label = inp.closest('label') || inp.parentElement;
-// (DEAD)             const lbl = label ? label.textContent.trim().charAt(0).toUpperCase() : '';
-// (DEAD)             return /[A-Z]/.test(lbl) ? lbl : v;
-// (DEAD)           }).filter(Boolean).join(',');
-// (DEAD)         }
-// (DEAD)       }
-// (DEAD) 
-// (DEAD)       if (!answer) { skip++; return; }
-// (DEAD) 
+      if (!answer) {
+        const inputs = Array.from(c.querySelectorAll('input[type="radio"],input[type="checkbox"]'));
+        const correct = inputs.filter(i => {
+          const p = i.closest('label,li,div,td,tr');
+          if (!p) return false;
+          if (i.getAttribute('data-correct') === 'true' || i.getAttribute('data-answer') === 'true') return true;
+          const cls = (p.className || '').toLowerCase();
+          if (/\b(correct|right|answer-right|true|正确)\b/.test(cls)) return true;
+          const cs = getComputedStyle(p);
+          const tc = cs.color;
+          if (/^rgb\(\s*0\s*,\s*(?:6\d|7\d|8\d|9\d|1[012]\d)\s*,\s*0\s*\)$/.test(tc)) return true;
+          if (/^rgb\(\s*0\s*,\s*(?:1[2-9]\d|2\d{2})\s*,\s*(?:0|6\d|7\d|8\d)\s*\)$/.test(tc)) return true;
+          return false;
+        });
+        if (correct.length > 0) {
+          answer = correct.map(inp => {
+            const v = (inp.value || '').trim().toUpperCase();
+            if (/^[A-Z]$/.test(v)) return v;
+            const label = inp.closest('label') || inp.parentElement;
+            const lbl = label ? label.textContent.trim().charAt(0).toUpperCase() : '';
+            return /[A-Z]/.test(lbl) ? lbl : v;
+          }).filter(Boolean).join(',');
+        }
+      }
+
+      if (!answer) { skip++; return; }
+
       // 去重
-// (DEAD)       const db  = LibraryManager.load();
-// (DEAD)       const nq  = cleanText(qText);
-// (DEAD)       const dup = Object.keys(db).some(k => cleanText(k) === nq);
-// (DEAD)       if (!dup) {
-// (DEAD)         LibraryManager.add(qText, answer);
-// (DEAD)         cnt++;
-// (DEAD)       } else {
-// (DEAD)         skip++;
-// (DEAD)       }
-// (DEAD)     });
-// (DEAD)     uLog('采集完成，新增 ' + cnt + ' 条，跳过 ' + skip + ' 条', cnt > 0 ? 'ok' : 'warn');
-// (DEAD)     refreshLibCount();
-// (DEAD)     refreshStats();
-// (DEAD)     if (cnt > 0) gmNotify('题库更新', '新增 ' + cnt + ' 条题目！');
-// (DEAD)   }
+      const db  = LibraryManager.load();
+      const nq  = cleanText(qText);
+      const dup = Object.keys(db).some(k => cleanText(k) === nq);
+      if (!dup) {
+        LibraryManager.add(qText, answer);
+        cnt++;
+      } else {
+        skip++;
+      }
+    });
+    uLog('采集完成，新增 ' + cnt + ' 条，跳过 ' + skip + ' 条', cnt > 0 ? 'ok' : 'warn');
+    refreshLibCount();
+    refreshStats();
+    if (cnt > 0) gmNotify('题库更新', '新增 ' + cnt + ' 条题目！');
+  }
 
   /* =========================================================
      扫描结构（调试）
   ========================================================= */
-// (DEAD)   function debugScan() {
-// (DEAD)     const containers = findQContainers();
-// (DEAD)     const info = [
-// (DEAD)       'URL: ' + location.href,
-// (DEAD)       '题目容器数: ' + containers.length,
-// (DEAD)       'radio/checkbox 总数: ' + $$('input[type=radio],input[type=checkbox]').length,
-// (DEAD)       '提交按钮: ' + $$('input[type=submit],button[type=submit]').map(b => b.value || b.textContent).join(' | ')
-// (DEAD)     ];
-// (DEAD)     if (containers.length > 0) {
-// (DEAD)       const q0Text = getQText(containers[0]);
-// (DEAD)       info.push('--- 第1题预览 ---', '题干: ' + q0Text.substring(0, 100));
-// (DEAD)     }
-// (DEAD)     const report = info.join('\n');
-// (DEAD)     console.log('[ATA Pro DEBUG]\n' + report);
-// (DEAD)     uLog(report.replace(/\n/g, ' | ').substring(0, 300), 'info');
-// (DEAD)     const div = document.createElement('div');
-// (DEAD)     div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:1px solid #ccc;border-radius:8px;padding:20px;z-index:2147483646;max-width:80vw;max-height:80vh;overflow:auto;font-size:12px;white-space:pre;box-shadow:0 4px 20px rgba(0,0,0,.3);';
-// (DEAD)     div.textContent = report;
-// (DEAD)     const closeBtn = document.createElement('button');
-// (DEAD)     closeBtn.textContent = '关闭'; closeBtn.style.cssText = 'position:absolute;top:8px;right:8px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;';
-// (DEAD)     closeBtn.onclick = () => div.remove();
-// (DEAD)     div.appendChild(closeBtn);
-// (DEAD)     document.body.appendChild(div);
-// (DEAD)   }
+  function debugScan() {
+    const containers = findQContainers();
+    const info = [
+      'URL: ' + location.href,
+      '题目容器数: ' + containers.length,
+      'radio/checkbox 总数: ' + $$('input[type=radio],input[type=checkbox]').length,
+      '提交按钮: ' + $$('input[type=submit],button[type=submit]').map(b => b.value || b.textContent).join(' | ')
+    ];
+    if (containers.length > 0) {
+      const q0Text = getQText(containers[0]);
+      info.push('--- 第1题预览 ---', '题干: ' + q0Text.substring(0, 100));
+    }
+    const report = info.join('\n');
+    console.log('[ATA Pro DEBUG]\n' + report);
+    uLog(report.replace(/\n/g, ' | ').substring(0, 300), 'info');
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:1px solid #ccc;border-radius:8px;padding:20px;z-index:2147483646;max-width:80vw;max-height:80vh;overflow:auto;font-size:12px;white-space:pre;box-shadow:0 4px 20px rgba(0,0,0,.3);';
+    div.textContent = report;
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '关闭'; closeBtn.style.cssText = 'position:absolute;top:8px;right:8px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;';
+    closeBtn.onclick = () => div.remove();
+    div.appendChild(closeBtn);
+    document.body.appendChild(div);
+  }
 
   /* =========================================================
      主答题流程
