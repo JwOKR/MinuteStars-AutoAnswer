@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.26
+// @version      4.8.27
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -2588,6 +2588,9 @@
       <div class="ata-row">
         <span class="ata-label">启用快捷键</span>
         <label class="ata-toggle"><input type="checkbox" id="cfg-shortcuts-enable"><span class="ata-slider"></span></label>
+      </div>
+      <div style="font-size:10px;color:#888;margin:2px 0 6px 0;line-height:1.6">
+        ⌨️ <b>Alt+Enter</b>：开始答题 / 提交答案 &nbsp;|&nbsp; <b>Alt+S</b>：暂停 / 继续 &nbsp;|&nbsp; <b>Alt+D</b>：下载题库 JSON
       </div>
       <div class="ata-row">
         <span class="ata-label">系统通知</span>
