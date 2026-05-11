@@ -1,4 +1,19 @@
 # Changelog
+## v4.8.23
+### ♻️ 重构
+- **A: 拆分 runAutoAnswer()**
+  - 提取 `processQuestions(containers, seenQ)` 函数（题目遍历、匹配、答题、日志全逻辑）
+  - `runAutoAnswer()` 从 144 行缩减至 ~68 行
+- **B: 拆分 renderBrowse()**
+  - 提取 `buildBrowseRows(entries, page, keyword, useRegex)`（表格行构建）
+  - 提取 `renderPager(total, page)`（分页控件更新）
+  - `renderBrowse()` 从 81 行缩减至 ~58 行
+- **C: 参数对象化**
+  - `updateStatsCards(ok, infer, skip, i, total, libCnt, ruleCnt, aiCnt)`
+    → `updateStatsCards({ ok, infer, skip, i, total, libCnt, ruleCnt, aiCnt })`
+  - `updateHitRate(answered, hit, lib, rule, ai)`
+    → `updateHitRate({ answered, hit, lib, rule, ai })`
+
 ## v4.8.22
 ### 🐛 Bugfix
 - **恢复 v4.8.21 误注释的函数**

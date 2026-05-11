@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.22
+// @version      4.8.23
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3562,6 +3562,38 @@
     } catch { return escHtml(text); }
   }
 
+  /* ---- 提取：构建题库浏览表格行 ---- */
+  function buildBrowseRows(entries, page, keyword, useRegex) {
+    const tbody = $c('#ata-lib-tbody');
+    if (!tbody) return;
+    const start = (page - 1) * PAGE_SIZE;
+    const slice = entries.slice(start, start + PAGE_SIZE);
+    const frag = document.createDocumentFragment();
+    if (!slice.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="3" style="text-align:center;color:#666;padding:20px">没有匹配的题目</td>';
+      frag.appendChild(tr);
+    }
+    slice.forEach(([q, a]) => {
+      const qHtml = _highlight(q, keyword, useRegex);
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="q-cell">' + qHtml + '</td>'
+        + '<td style="color:#ffa726;font-weight:bold">' + escHtml(String(a)) + '</td>'
+        + '<td><button class="del-btn" data-q="' + escHtml(q) + '">删除</button></td>';
+      frag.appendChild(tr);
+    });
+    tbody.innerHTML = '';
+    tbody.appendChild(frag);
+  }
+  /* ---- 提取：渲染分页控件 ---- */
+  function renderPager(total, page) {
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    $c('#ata-pager-info').textContent = '共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页';
+    $c('#ata-pager-prev').disabled = page <= 1;
+    $c('#ata-pager-next').disabled = (page - 1) * PAGE_SIZE + PAGE_SIZE >= total;
+    $c('#ata-pager-jump').max = totalPages;
+  }
+
   function renderBrowse(page) {
     currentPage = page;
     const searchEl  = $c('#ata-lib-search');
@@ -3591,8 +3623,8 @@
     }
     // ── 分类过滤 ──
     entries = entries.filter(([q]) => {
-      if (filter === 'builtin') return false; // 纯云端模式无内置题库
-      if (filter === 'user')    return true;  // 全部都是用户题库
+      if (filter === 'builtin') return false;
+      if (filter === 'user')    return true;
       return true;
     });
     // ── 标签过滤 ──
@@ -3617,31 +3649,8 @@
     }
 
     const total   = entries.length;
-    const start   = (page - 1) * PAGE_SIZE;
-    const slice   = entries.slice(start, start + PAGE_SIZE);
-    const tbody   = $c('#ata-lib-tbody');
-    if (!tbody) return;
-    const frag = document.createDocumentFragment();
-    if (!slice.length) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="3" style="text-align:center;color:#666;padding:20px">没有匹配的题目</td>';
-      frag.appendChild(tr);
-    }
-    slice.forEach(([q, a]) => {
-      const qHtml = _highlight(q, keyword, useRegex);
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td class="q-cell">' + qHtml + '</td>'
-        + '<td style="color:#ffa726;font-weight:bold">' + escHtml(String(a)) + '</td>'
-        + '<td><button class="del-btn" data-q="' + escHtml(q) + '">删除</button></td>';
-      frag.appendChild(tr);
-    });
-    tbody.innerHTML = '';
-    tbody.appendChild(frag);
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    $c('#ata-pager-info').textContent = '共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页';
-    $c('#ata-pager-prev').disabled = page <= 1;
-    $c('#ata-pager-next').disabled = start + PAGE_SIZE >= total;
-    $c('#ata-pager-jump').max = totalPages;
+    buildBrowseRows(entries, page, keyword, useRegex);
+    renderPager(total, page);
   }
   // ⚡ 搜索防抖（300ms），避免每次按键都触发全量过滤+渲染
   let _searchT = null;
@@ -4094,7 +4103,7 @@
     startTick();
   }
 
-  function updateStatsCards(ok, infer, skip, i, total, libCnt, ruleCnt, aiCnt) {
+  function updateStatsCards({ ok, infer, skip, i, total, libCnt, ruleCnt, aiCnt }) {
     const pct = Math.round((i + 1) / total * 100);
     setProgress(i + 1, total);
     const statAns = $c('#ata-stat-answered');
@@ -4103,8 +4112,90 @@
     if (statAns)  statAns.textContent  = i + 1;
     if (statHit)  statHit.textContent   = ok + infer;
     if (statMiss) statMiss.textContent  = skip;
-    updateHitRate(i + 1, ok + infer, libCnt, ruleCnt, aiCnt);
+    updateHitRate({ answered: i + 1, hit: ok + infer, lib: libCnt, rule: ruleCnt, ai: aiCnt });
     return pct;
+  }
+
+  /* ---- 提取：题目遍历与答题核心逻辑 ---- */
+  async function processQuestions(containers, seenQ) {
+    let ok = 0, skip = 0, infer = 0;
+    let libCnt = 0, ruleCnt = 0, aiCnt = 0;
+    _speedTimes = [];
+    let _speedStart = Date.now();
+    const speedWrap = document.getElementById('ata-speed-wrap');
+    if (speedWrap) speedWrap.style.display = '';
+    _recentLogs = [];
+    renderRecentLogs();
+
+    for (let i = 0; i < containers.length; i++) {
+      if (!running) break;
+      const c   = containers[i];
+      const txt = getQText(c);
+      const nq  = cleanText(txt);
+      if (seenQ.has(nq)) { skip++; continue; }
+      seenQ.add(nq);
+
+      const ans = findMatch(txt);
+      let matchedAnswer = null, matchMethod = 'none';
+      if (ans !== null) {
+        matchedAnswer = ans; matchMethod = 'library';
+        libCnt++;
+        await fill(c, ans);
+        c.classList.add('ata-answered');
+        const ansStr = Array.isArray(ans) ? ans.join('') : String(ans);
+        uLog('✅ ' + txt.substring(0, 35) + '… → ' + ansStr, 'ok');
+        ok++;
+      } else {
+        const inputs = Array.from(c.querySelectorAll('input[type="radio"],input[type="checkbox"]'));
+        const ruleAns = ruleInfer(txt, inputs);
+        if (ruleAns) {
+          matchedAnswer = ruleAns; matchMethod = 'rule';
+          ruleCnt++;
+          await fill(c, ruleAns);
+          c.classList.add('ata-answered');
+          uLog('🔎 规则推断 ' + txt.substring(0, 30) + '… → ' + ruleAns, 'info');
+          infer++;
+        } else if (CFG.aiEnable && CFG.aiApiKey) {
+          const aiAns = await aiMatch(txt, inputs);
+          if (aiAns) {
+            matchedAnswer = aiAns; matchMethod = 'ai';
+            aiCnt++;
+            await fill(c, aiAns);
+            c.classList.add('ata-answered');
+            uLog('🤖 AI匹配 ' + txt.substring(0, 30) + '… → ' + aiAns, 'info');
+            ok++;
+          } else {
+            c.classList.add('ata-no-match');
+            uLog('⚠️ 未匹配: ' + txt.substring(0, 40), 'warn');
+            skip++;
+          }
+        } else {
+          c.classList.add('ata-no-match');
+          uLog('⚠️ 未匹配: ' + txt.substring(0, 40), 'warn');
+          skip++;
+        }
+      }
+      _logAnswer(txt, matchedAnswer, matchMethod);
+      if (CFG.wrongReviewEnable && !matchedAnswer) {
+        // WrongQuestionManager.add(txt, '', '');
+      }
+      addRecentLog(txt, matchedAnswer, matchMethod);
+      updateAccuracyHistory(matchedAnswer !== null);
+      const pct = updateStatsCards({ ok, infer, skip, i, total: containers.length, libCnt, ruleCnt, aiCnt });
+      const elapsed = Date.now() - _speedStart;
+      _speedTimes.push(elapsed);
+      if (_speedTimes.length > 200) _speedTimes = _speedTimes.slice(-200);
+      drawSpeedChart();
+      setRunningStatus('答题中 ' + (i+1) + '/' + containers.length + ' ' + pct + '%', 'running');
+
+      while (paused && running) {
+        setRunningStatus('⏸ 已暂停 ' + (i+1) + '/' + containers.length + ' ' + pct + '%', 'running');
+        await sleep(300);
+      }
+      if (!running) break;
+      await sleep(CFG.answerDelay + Math.random() * 200);
+    }
+    return { ok, infer, skip, libCnt, ruleCnt, aiCnt };
   }
 
   async function runAutoAnswer() {
@@ -4131,96 +4222,9 @@
       if (statTotalEl) statTotalEl.textContent = containers.length;
 
       setProgress(0, containers.length);
-      let ok = 0, skip = 0, infer = 0;
-      let libCnt = 0, ruleCnt = 0, aiCnt = 0; // 各匹配方式计数
       const seenQ = new Set();
-      // 速度记录
-      _speedTimes = [];
-      let _speedStart = Date.now();
-      const speedWrap = document.getElementById('ata-speed-wrap');
-      if (speedWrap) speedWrap.style.display = '';
-      // 清空答题记录（显示当前试卷全部试题）
-      _recentLogs = [];
-      renderRecentLogs();
+      const { ok, infer, skip, libCnt, ruleCnt, aiCnt } = await processQuestions(containers, seenQ);
 
-      for (let i = 0; i < containers.length; i++) {
-        if (!running) break;
-        const c   = containers[i];
-        const txt = getQText(c);
-        const nq  = cleanText(txt);
-        if (seenQ.has(nq)) { skip++; continue; }
-        seenQ.add(nq);
-
-        const ans = findMatch(txt);
-        let matchedAnswer = null, matchMethod = 'none';
-        if (ans !== null) {
-          matchedAnswer = ans; matchMethod = 'library';
-          libCnt++;
-          await fill(c, ans);
-          c.classList.add('ata-answered');
-          const ansStr = Array.isArray(ans) ? ans.join('') : String(ans);
-          uLog('✅ ' + txt.substring(0, 35) + '… → ' + ansStr, 'ok');
-          ok++;
-        } else {
-          // 尝试规则推断
-          const inputs = Array.from(c.querySelectorAll('input[type="radio"],input[type="checkbox"]'));
-          const ruleAns = ruleInfer(txt, inputs);
-          if (ruleAns) {
-            matchedAnswer = ruleAns; matchMethod = 'rule';
-            ruleCnt++;
-            await fill(c, ruleAns);
-            c.classList.add('ata-answered');
-            uLog('🔎 规则推断 ' + txt.substring(0, 30) + '… → ' + ruleAns, 'info');
-            infer++;
-          } else if (CFG.aiEnable && CFG.aiApiKey) {
-            // AI 辅助兜底
-            const aiAns = await aiMatch(txt, inputs);
-            if (aiAns) {
-              matchedAnswer = aiAns; matchMethod = 'ai';
-              aiCnt++;
-              await fill(c, aiAns);
-              c.classList.add('ata-answered');
-              uLog('🤖 AI匹配 ' + txt.substring(0, 30) + '… → ' + aiAns, 'info');
-              ok++;
-            } else {
-              c.classList.add('ata-no-match');
-              uLog('⏭ 未匹配: ' + txt.substring(0, 40), 'warn');
-              skip++;
-            }
-          } else {
-            c.classList.add('ata-no-match');
-            uLog('⏭ 未匹配: ' + txt.substring(0, 40), 'warn');
-            skip++;
-          }
-        }
-        // 记录答题日志
-        _logAnswer(txt, matchedAnswer, matchMethod);
-        // v4.7.0 错题本：未匹配的题目加入错题本
-        if (!matchedAnswer && CFG.wrongReviewEnable) {
-          // WrongQuestionManager.add(txt, '', '');
-        }
-        // 添加最近答题记录 & 更新命中率
-        addRecentLog(txt, matchedAnswer, matchMethod);
-        // v4.7.0 正确率趋势图：记录本题命中情况
-        updateAccuracyHistory(matchedAnswer !== null);
-        // 实时更新统计卡片
-        const pct = updateStatsCards(ok, infer, skip, i, containers.length, libCnt, ruleCnt, aiCnt);
-        // 记录答题速度
-        const elapsed = Date.now() - _speedStart;
-        _speedTimes.push(elapsed);
-        if (_speedTimes.length > 200) _speedTimes = _speedTimes.slice(-200);
-        drawSpeedChart();
-        setRunningStatus('答题中 ' + (i+1) + '/' + containers.length + ' 题 ' + pct + '%', 'running');
-
-        // 暂停时阻塞，直到用户点继续
-        while (paused && running) {
-          setRunningStatus('⏸ 已暂停 ' + (i+1) + '/' + containers.length + ' 题 ' + pct + '%', 'running');
-          await sleep(300);
-        }
-        if (!running) break;
-
-        await sleep(CFG.answerDelay + Math.random() * 200);
-      }
 
       uLog('完成！命中 ' + ok + '，推断 ' + infer + '，跳过 ' + skip, 'ok');
       setRunningStatus('✅ 完成！命中' + (ok+infer) + '题', 'done');
@@ -4429,7 +4433,7 @@
   let _recentLogs = []; // 当前试卷全部答题记录
 
   /** 更新命中率显示 */
-  function updateHitRate(answered, hit, lib, rule, ai) {
+  function updateHitRate({ answered, hit, lib, rule, ai }) {
     const pct = answered > 0 ? Math.round(hit / answered * 100) : 0;
     const fill = document.getElementById('ata-hitrate-fill');
     const pctEl = document.getElementById('ata-stat-hitrate');
