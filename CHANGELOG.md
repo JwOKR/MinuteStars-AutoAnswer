@@ -1,4 +1,15 @@
 # Changelog
+## v4.8.21
+### 🧹 清理
+- **注释死代码（先观察再决定是否删除）**
+  - `_idleWrap`（原行 990）
+  - `aiValidateAnswer`（原行 1368）
+  - `aiAnalyzeWrongAnswer`（原行 1419）
+  - `doSave`（原行 3895）
+  - `collectAnswers`（原行 3946）
+  - `debugScan`（原行 4034）
+  - 共注释 225 行，若观察期无异常可正式删除
+
 ## v4.8.20
 ### ♻️ 重构
 - **拆分 parseDocxXML()**
