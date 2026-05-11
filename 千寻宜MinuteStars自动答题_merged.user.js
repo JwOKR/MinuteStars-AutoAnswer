@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.19
+// @version      4.8.20
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3293,7 +3293,72 @@
    * @param {string} xmlStr
    * @returns {{added, skipped, errors, preview[]}}
    */
-  function parseDocxXML(xmlStr) {
+  function extractParagraphs(doc) {
+    const paras = doc.getElementsByTagNameNS('*', 'p');
+    return Array.from(paras).map(p => {
+      const tNodes = p.getElementsByTagNameNS('*', 't');
+      return Array.from(tNodes).map(n => n.textContent || '').join('');
+    });
+  }
+
+  function parseQAFromParagraphs(allTexts, db) {
+    let added = 0, skipped = 0;
+    const preview = [];
+    const duplicates = [];
+
+    for (let i = 0; i < allTexts.length; i++) {
+      const line = allTexts[i];
+      if (!line.trim()) continue;
+      if (!/^\d+[\.、\s　]/.test(line)) continue;
+
+      const qLines = [line];
+      for (let j = i + 1; j < allTexts.length; j++) {
+        const nextLine = allTexts[j];
+        if (/^\d+[\.、\s　]/.test(nextLine)) break;
+        if (!nextLine.trim()) break;
+        if (/^(答案|解析)[：:]/.test(nextLine.trim())) break;
+        qLines.push(nextLine);
+      }
+
+      const fullText = qLines.join('\n');
+      const ansMatch = fullText.match(/答案[：:]\s*([A-Za-z,，]+)/);
+      if (!ansMatch) continue;
+
+      let qText = fullText
+        .replace(/答案[：:]\s*[A-Za-z,，]+.*$/, '')
+        .replace(/解析[：:].*$/gm, '')
+        .trim()
+        .replace(/^\d+[\.、\s　]+/, '')
+        .trim();
+
+      qText = qText.split('\n')
+        .filter(l => !/^[A-Za-z][\.、　\s]/.test(l.trim()))
+        .map(l => l.replace(/\s*[A-Z][\.、　].*$/, ''))
+        .filter(l => l.trim())
+        .join('\n');
+
+      if (qText.length < 4) { skipped++; continue; }
+
+      let answer = ansMatch[1].toUpperCase().replace(/，/g, ',');
+      if (/^[A-Z]+$/.test(answer) && answer.length > 1) {
+        answer = answer.split('').join(',');
+      }
+
+      if (!qText || !answer) { skipped++; continue; }
+      if (db.hasOwnProperty(qText)) {
+        duplicates.push({ q: qText, oldAns: db[qText], newAns: answer });
+        skipped++; continue;
+      }
+
+      db[qText] = answer;
+      added++;
+      preview.push({ q: qText.substring(0, 60), a: answer });
+    }
+
+    return { added, skipped, preview, duplicates };
+  }
+
+  async function parseDocxXML(xmlStr) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlStr, 'application/xml');
 
@@ -3306,88 +3371,9 @@
       if (altErr) return { added: 0, skipped: 0, errors: ['XML 解析失败，文件可能已损坏'], preview: [] };
     }
 
-    // getElementsByTagNameNS('*', 'p') 兼容所有命名空间前缀（w:p / w:pPr 等）
-    const paras = doc.getElementsByTagNameNS('*', 'p');
-    const db    = LibraryManager.load();
-    let added = 0, skipped = 0;
-    const preview = [];
-    const duplicates = [];
-
-    // 先把所有段落文本收集起来
-    const allTexts = Array.from(paras).map(p => {
-      const tNodes = p.getElementsByTagNameNS('*', 't');
-      return Array.from(tNodes).map(n => n.textContent || '').join('');
-    });
-
-    for (let i = 0; i < allTexts.length; i++) {
-      const line = allTexts[i];
-      if (!line.trim()) continue;
-
-      // 以数字+分隔符开头的行才是题目
-      if (!/^\d+[\.、\s　]/.test(line)) continue;
-
-      // 收集从本题开始到下一题之前的所有连续行
-      const qLines = [line];
-      for (let j = i + 1; j < allTexts.length; j++) {
-        const nextLine = allTexts[j];
-        // 遇到下一题停止
-        if (/^\d+[\.、\s　]/.test(nextLine)) break;
-        // 遇到空行停止（题目和答案之间可能有空行）
-        if (!nextLine.trim()) break;
-        // 遇到"答案："或"解析："停止（后续是答案和解析）
-        if (/^(答案|解析)[：:]/.test(nextLine.trim())) break;
-        qLines.push(nextLine);
-      }
-
-      // 合并所有行作为题目内容
-      const fullText = qLines.join('\n');
-
-      // 提取 "答案：X" 部分
-      const ansMatch = fullText.match(/答案[：:]\s*([A-Za-z,，]+)/);
-      if (!ansMatch) continue;
-
-      // 只保留题目部分（去掉答案和解析）
-      let qText = fullText
-        .replace(/答案[：:]\s*[A-Za-z,，]+.*$/, '')  // 去掉答案及之后
-        .replace(/解析[：:].*$/gm, '')                 // 去掉所有解析行
-        .trim();
-
-      // 去掉题号前缀，保留出题人
-      qText = qText
-        .replace(/^\d+[\.、\s　]+/, '')  // 只去掉题号
-        .trim();
-
-      // 只保留题干（过滤掉选项行 A. B. C. D. 等，以及同行末尾的选项）
-      qText = qText.split('\n')
-        .filter(l => !/^[A-Za-z][\.、　\s]/.test(l.trim()))  // 去掉选项行
-        .map(l => l.replace(/\s*[A-Z][\.、　].*$/, ''))       // 去掉同行末尾的选项
-        .filter(l => l.trim())                                // 过滤空行
-        .join('\n');
-
-      if (qText.length < 4) { skipped++; continue; }
-
-      // 解析答案
-      let answer = ansMatch[1].toUpperCase().replace(/，/g, ',');
-
-      // 多选题：多个字母之间没有逗号的，自动加上英文逗号
-      if (/^[A-Z]+$/.test(answer) && answer.length > 1) {
-        answer = answer.split('').join(',');
-      }
-
-      if (!qText || !answer) { skipped++; continue; }
-
-      // 去重（精确匹配）
-      if (db.hasOwnProperty(qText)) {
-        duplicates.push({ q: qText, oldAns: db[qText], newAns: answer });
-        skipped++;
-        continue;
-      }
-
-      db[qText] = answer;
-      added++;
-      preview.push({ q: qText.substring(0, 60), a: answer });
-    }
-
+    const allTexts = extractParagraphs(doc);
+    const db = await LibraryManager.load();
+    const { added, skipped, preview, duplicates } = parseQAFromParagraphs(allTexts, db);
     LibraryManager.save(db);
     return { added, skipped, errors: [], preview, duplicates };
   }

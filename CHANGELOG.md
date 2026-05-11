@@ -1,4 +1,12 @@
 # Changelog
+## v4.8.20
+### ♻️ 重构
+- **拆分 parseDocxXML()**
+  - 改为 `async function`，内部调用已提取的 `parseQAFromParagraphs(allTexts, db)`
+  - 修复 bug：原函数未声明 `db`/`added`/`skipped`/`preview`/`duplicates` 直接使用（会导致 ReferenceError）
+  - 现在正确通过 `await LibraryManager.load()` 获取 `db`，调用 `parseQAFromParagraphs` 处理，再 `LibraryManager.save(db)` 保存
+  - 函数从 ~87 行缩减至 ~15 行
+
 ## v4.8.19
 ### ♻️ 重构
 - **拆分 aiMatch()**
