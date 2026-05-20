@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.33
+// @version      4.8.35
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3414,6 +3414,343 @@
     return { added, skipped, errors: [], preview, duplicates };
   }
 
+  // ========== 新的 Docx 解析架构（v4.8.35+）==========
+
+  /**
+   * 新的 docx 解析入口函数（替代 parseDocxBlob）
+   * 新架构：单遍XML解析 + 状态机识别
+   * @param {Blob} blob - docx 文件 blob
+   * @returns {Promise<{added, skipped, errors, preview, duplicates}>}
+   */
+  async function parseDocxDocument(blob) {
+    try {
+      debugLog('INFO', 'PARSE_START', '开始解析 docx 文档');
+      
+      // TODO Phase 1.1: 读取文件为 ArrayBuffer
+      const buffer = await blob.arrayBuffer();
+      debugLog('DEBUG', 'PARSE', `文件大小: ${buffer.byteLength} bytes`);
+      
+      // Phase 1.2: 解压并提取 XML（新架构）
+      const xmlStr = await extractDocxXML(buffer);
+      
+      // Phase 1.3: 解析 XML 为内容块（新架构）
+      const contentBlocks = extractContentBlocks(xmlStr);
+      
+      // Phase 2: 用重构版函数解析 Q&A（替代旧 parseQAFromParagraphs）
+      const qaPairs = parseQAFromParagraphsNew(contentBlocks, await LibraryManager.load());
+      
+      // 当前 qaPairs 已经包含 {added, skipped, preview, duplicates}
+      
+      debugLog('INFO', 'PARSE_COMPLETE', `完成: added=${qaPairs.added}, skipped=${qaPairs.skipped}`);
+      return qaPairs;
+      
+    } catch (err) {
+      console.error('[DocxParser] 解析失败:', err);
+      debugLog('ERROR', 'PARSE_ERROR', err.message);
+      return { added: 0, skipped: 0, errors: [err.message], preview: [], duplicates: [] };
+    }
+  }
+
+  /**
+   * 临时：调用旧的 extractDocxXML 逻辑（Phase 1 兼容用）
+   */
+  function extractDocxXMLLegacy(buffer) {
+    return new Promise((resolve, reject) => {
+      if (typeof JSZip === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        script.onload = () => doParse(buffer, resolve, reject);
+        script.onerror = () => reject(new Error('无法加载 JSZip'));
+        document.head.appendChild(script);
+      } else {
+        doParse(buffer, resolve, reject);
+      }
+      
+      function doParse(buf, res, rej) {
+        const zip = new JSZip();
+        zip.loadAsync(buf).then(loaded => {
+          const xmlFile = loaded.file('word/document.xml')
+                      || loaded.file('Word/document.xml')
+                      || loaded.file('WORD/DOCUMENT.XML');
+          if (!xmlFile) return rej(new Error('ZIP 中未找到 word/document.xml'));
+          return xmlFile.async('string');
+        }).then(xmlStr => {
+          res(xmlStr);
+        }).catch(rej);
+      }
+    });
+  }
+
+  /**
+   * 临时：调用旧的 extractParagraphs 逻辑（Phase 1 兼容用）
+   */
+  function extractContentBlocksLegacy(xmlStr) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlStr, 'application/xml');
+    return extractParagraphs(doc); // 调用旧函数
+  }
+
+  /**
+   * 调试日志函数
+   */
+  function debugLog(level, category, message, data) {
+    const logEntry = {
+      timestamp: Date.now(),
+      level,
+      category,
+      message,
+      data
+    };
+    
+    if (!window.__docxDebugLog) window.__docxDebugLog = [];
+    window.__docxDebugLog.push(logEntry);
+    
+    if (level === 'ERROR') console.error(`[DocxParser][${category}] ${message}`, data);
+    else if (level === 'WARN') console.warn(`[DocxParser][${category}] ${message}`, data);
+    else if (level === 'INFO') console.info(`[DocxParser][${category}] ${message}`, data);
+    else console.log(`[DocxParser][${category}] ${message}`, data);
+  }
+
+  // ========== 新架构 Phase 1.2: extractDocxXML ==========
+  
+  /**
+   * 新架构 Phase 1.2: 解压 docx 并提取 word/document.xml
+   * @param {ArrayBuffer} buffer - docx 文件内容
+   * @returns {Promise<string>} XML 字符串
+   */
+  async function extractDocxXML(buffer) {
+    debugLog('DEBUG', 'EXTRACT', '开始解压 docx');
+    
+    // 1. 确保 JSZip 已加载
+    if (typeof JSZip === 'undefined') {
+      await loadJSZip();
+    }
+    
+    // 2. 解压
+    const zip = new JSZip();
+    const loaded = await zip.loadAsync(buffer);
+    
+    // 3. 提取 word/document.xml（尝试多种路径）
+    const xmlFile = loaded.file('word/document.xml')
+              || loaded.file('Word/document.xml')
+              || loaded.file('WORD/DOCUMENT.XML');
+    
+    if (!xmlFile) {
+      throw new Error('ZIP 中未找到 word/document.xml（文件格式异常）');
+    }
+    
+    const xmlStr = await xmlFile.async('string');
+    debugLog('DEBUG', 'EXTRACT', `XML 大小: ${xmlStr.length} chars`);
+    
+    return xmlStr;
+  }
+  
+  /**
+   * 加载 JSZip 库
+   */
+  function loadJSZip() {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      script.onload = () => {
+        debugLog('INFO', 'JSZIP', 'JSZip 加载成功');
+        resolve();
+      };
+      script.onerror = () => {
+        reject(new Error('无法加载 JSZip（网络问题），请检查网络后重试'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  
+  /**
+   * 新架构 Phase 1.3: 解析 XML 为内容块（基础版：只处理段落）
+   * @param {string} xmlStr - XML 字符串
+   * @returns {string[]} 段落文本数组
+   */
+  function extractContentBlocks(xmlStr) {
+    debugLog('DEBUG', 'EXTRACT_BLOCKS', '开始解析 XML 为内容块');
+    
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlStr, 'application/xml');
+    
+    // 检查解析错误
+    const errNode = doc.querySelector('parsererror');
+    if (errNode) {
+      throw new Error('XML 解析失败：' + errNode.textContent);
+    }
+    
+    const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const paras = doc.getElementsByTagNameNS(ns, 'p');
+    
+    const blocks = Array.from(paras).map(p => {
+      const allEls = p.getElementsByTagName('*');
+      let text = '';
+      for (const el of allEls) {
+        if (el.localName === 't') {
+          text += el.textContent || '';
+        } else if (el.localName === 'cr' || el.localName === 'br') {
+          text += '\n';
+        }
+      }
+      return text.split('\n').map(l => l.trim()).filter(l => l).join('\n');
+    });
+    
+    debugLog('DEBUG', 'EXTRACT_BLOCKS', `提取了 ${blocks.length} 个段落`);
+      return blocks;
+  }
+
+  /**
+   * 新架构 Phase 2: 解析内容块为 Q&A 对（重构版，逻辑更清晰）
+   * 从 contentBlocks (段落文本数组) 中提取题目和答案
+   * @param {string[]} contentBlocks - 段落文本数组
+   * @param {Object} db - 当前题库（用于去重）
+   * @returns {{added: number, skipped: number, preview: Array, duplicates: Array}}
+   */
+  function parseQAFromParagraphsNew(contentBlocks, db) {
+    let added = 0, skipped = 0;
+    const preview = [];
+    const duplicates = [];
+
+    // ===== Helper 函数 =====
+    
+    /** 判断是否是题目分类标题（如"一、单选题"）*/
+    function isCategoryTitle(line) {
+      const t = line.trim();
+      return /^[一二三四五六七八九][、．.\s]/.test(t) || /^第[一二三四五六七八九\d][部分章节\s]/.test(t);
+    }
+    
+    /** 判断是否是题目开始（数字开头，如"1."、"2、"）*/
+    function isQuestionStart(line) {
+      return /^\d+[\.、\s　]/.test(line.trim());
+    }
+    
+    /** 判断是否是选项行（如"A."、"B、"）*/
+    function isOption(line) {
+      return /^[A-Za-z][\.、　\s]/.test(line.trim());
+    }
+    
+    /** 判断是否是答案行（如"答案：A"、"正确答案：ABC"）*/
+    function isAnswerLine(line) {
+      return /^答案[：:]/.test(line.trim()) || /^正确答案[：:]/.test(line.trim());
+    }
+    
+    /** 判断是否是解析行（包含"解析"）*/
+    function isAnalysisLine(line) {
+      return /解析/.test(line);
+    }
+    
+    /** 从完整文本中提取答案 */
+    function extractAnswer(fullText) {
+      const match = fullText.match(/答案[：:]\s*([A-Za-z,，]+)/);
+      return match ? match[1] : null;
+    }
+    
+    /** 清理题目文本（移除答案、解析、选项等）*/
+    function cleanQuestionText(fullText) {
+      let qText = fullText
+        .replace(/答案[：:][^\n]*/g, '')       // 移除"答案：..."（到行尾）
+        .replace(/正确答案[：:][^\n]*/g, '')   // 移除"正确答案：..."（到行尾）
+        .replace(/解析[：:][^\n]*/g, '')       // 移除"解析：..."（到行尾）
+        .replace(/【解析】[^\n]*/g, '')        // 移除【解析】...（到行尾）
+        .trim()
+        .replace(/^\d+[\.、\s　]+/, '')      // 移除题号前缀
+        .trim();
+      
+      // 过滤选项行、数字列举、解析行
+      qText = qText.split('\n')
+        .filter(l => !isOption(l))                // 过滤选项行
+        .filter(l => !/^\d+[\.、　\s]/.test(l.trim()))  // 过滤数字列举
+        .filter(l => !isAnalysisLine(l))         // 过滤解析行
+        .map(l => l.replace(/\s*[A-Z][\.、　].*$/, '')) // 移除行尾选项标记
+        .filter(l => l.trim())
+        .join('\n');
+      
+      return qText;
+    }
+    
+    /** 标准化答案格式（如"AB" → "A,B"）*/
+    function normalizeAnswer(answer) {
+      let ans = answer.toUpperCase().replace(/，/g, ',');
+      if (/^[A-Z]+$/.test(ans) && ans.length > 1) {
+        ans = ans.split('').join(',');
+      }
+      return ans;
+    }
+
+    // ===== 主逻辑 =====
+    
+    for (let i = 0; i < contentBlocks.length; i++) {
+      const line = contentBlocks[i];
+      if (!line.trim()) continue;
+      
+      // 跳过分类标题
+      if (isCategoryTitle(line)) continue;
+      
+      // 必须是以数字开头的题目
+      if (!isQuestionStart(line)) continue;
+      
+      // 收集当前题目的所有行
+      const qLines = [line];
+      let j = i + 1;
+      
+      // 内循环：收集到答案或解析或下一题或空行
+      while (j < contentBlocks.length) {
+        const nextLine = contentBlocks[j];
+        const trimmed = nextLine.trim();
+        
+        // 跳过分类标题、遇到下一题、空行 → 停止
+        if (isCategoryTitle(nextLine) || isQuestionStart(nextLine) || !trimmed) {
+          break;
+        }
+        
+        // 答案行 → 收集并停止
+        if (isAnswerLine(nextLine)) {
+          qLines.push(nextLine);
+          j++;
+          break;
+        }
+        
+        // 解析行 → 不收集，直接停止
+        if (isAnalysisLine(nextLine)) {
+          break;
+        }
+        
+        // 其他行 → 收集
+        qLines.push(nextLine);
+        j++;
+      }
+      
+      // 跳过已处理的行
+      i = j - 1;
+      
+      // 提取答案
+      const fullText = qLines.join('\n');
+      const answer = extractAnswer(fullText);
+      if (!answer) continue;
+      
+      // 清理题目文本
+      const qText = cleanQuestionText(fullText);
+      if (qText.length < 4) { skipped++; continue; }
+      
+      // 标准化答案
+      const normalizedAnswer = normalizeAnswer(answer);
+      
+      // 去重检查
+      if (db.hasOwnProperty(qText)) {
+        duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
+        skipped++; continue;
+      }
+      
+      // 保存到题库
+      db[qText] = normalizedAnswer;
+      added++;
+      preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
+    }
+    
+    return { added, skipped, preview, duplicates };
+  }
+  
   // Word 文档导入事件
   document.getElementById('ata-docx-input').addEventListener('change', async function (e) {
     const file = e.target.files[0];
@@ -3435,7 +3772,7 @@
     showDocxMsg('⏳ 正在解析 Word 文档…', false);
 
     try {
-      const result = await parseDocxBlob(file);
+      const result = await parseDocxDocument(file);
 
       if (result.errors && result.errors.length > 0) {
         showDocxMsg('❌ ' + result.errors[0], false);

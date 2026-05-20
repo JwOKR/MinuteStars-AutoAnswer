@@ -1,4 +1,16 @@
 # Changelog
+
+## v4.8.35
+### 🔄 重构
+- **Docx 解析代码重构（Phase 1/2）：新架构基础框架 + 代码清理**
+  - 新增 `parseDocxDocument` 函数（新入口，替代 `parseDocxBlob`）
+  - 新增 `extractDocxXML`（解压 docx 并提取 XML）
+  - 新增 `extractContentBlocks`（解析 XML 为段落文本数组）
+  - 重构 `parseQAFromParagraphsNew`（替代旧 `parseQAFromParagraphs`，提取 helper 函数，代码更清晰）
+  - 新增调试日志函数 `debugLog`
+  - 事件处理器更新为调用新函数
+  - 旧代码暂保留（`parseDocxBlob`, `loadJsZipAndParse`, `extractParagraphs`, `parseQAFromParagraphs`），后续清理
+
 ## v4.8.33
 ### 🐛 Bugfix
 - **extractParagraphs 彻底重写，正确提取 Word 段落内换行**
