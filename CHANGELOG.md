@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.8.36
+### 🔄 重构
+- **Docx 解析代码重构（Phase 2）：实现状态机解析逻辑**
+  - 新增 `parseWithStateMachine` 函数（状态机版本解析器）
+  - 实现完整状态机：`LOOKING_FOR_QUESTION` → `COLLECTING_QUESTION` → `COLLECTING_OPTIONS` → `FOUND_ANSWER` → `FOUND_ANALYSIS`
+  - 状态机支持多行题干、选项收集、答案识别、解析跳过
+  - 更新 `parseDocxDocument` 调用状态机版本（替代 `parseQAFromParagraphsNew`）
+  - 保留 `parseQAFromParagraphsNew` 作为备用（向后兼容）
+  - 状态机版本具有更清晰的逻辑流程和更好的可维护性
+
 ## v4.8.35
 ### 🔄 重构
 - **Docx 解析代码重构（Phase 1/2）：新架构基础框架 + 代码清理**

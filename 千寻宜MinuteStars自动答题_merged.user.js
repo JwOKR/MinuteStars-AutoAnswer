@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.35
+// @version      4.8.36
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3436,8 +3436,8 @@
       // Phase 1.3: 解析 XML 为内容块（新架构）
       const contentBlocks = extractContentBlocks(xmlStr);
       
-      // Phase 2: 用重构版函数解析 Q&A（替代旧 parseQAFromParagraphs）
-      const qaPairs = parseQAFromParagraphsNew(contentBlocks, await LibraryManager.load());
+      // Phase 2: 用状态机解析 Q&A（新架构）
+      const qaPairs = parseWithStateMachine(contentBlocks, await LibraryManager.load());
       
       // 当前 qaPairs 已经包含 {added, skipped, preview, duplicates}
       
@@ -3747,6 +3747,300 @@
       added++;
       preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
     }
+    
+    return { added, skipped, preview, duplicates };
+  }
+  
+  /**
+   * Phase 2: 状态机解析函数
+   * 使用状态机模式解析内容块，提取Q&A对
+   */
+  function parseWithStateMachine(contentBlocks, db) {
+    // 状态定义
+    const State = {
+      LOOKING_FOR_QUESTION: 'LOOKING_FOR_QUESTION',     // 寻找题干开始
+      COLLECTING_QUESTION: 'COLLECTING_QUESTION',         // 收集多行题干
+      COLLECTING_OPTIONS: 'COLLECTING_OPTIONS',           // 收集选项
+      FOUND_ANSWER: 'FOUND_ANSWER',                       // 找到答案行
+      FOUND_ANALYSIS: 'FOUND_ANALYSIS',                   // 找到解析行
+      SKIPPING_JUNK: 'SKIPPING_JUNK'                     // 跳过无关内容
+    };
+    
+    // Helper 函数（复用自 parseQAFromParagraphsNew）
+    function isCategoryTitle(line) {
+      const t = line.trim();
+      return /^[一二三四五六七八九][、．.\s]/.test(t) || /^第[一二三四五六七八九\d][部分章节\s]/.test(t);
+    }
+    
+    function isQuestionStart(line) {
+      return /^\d+[\.、\s　]/.test(line.trim());
+    }
+    
+    function isOption(line) {
+      return /^[A-Za-z][\.、　\s]/.test(line.trim());
+    }
+    
+    function isAnswerLine(line) {
+      return /^答案[：:]/.test(line.trim()) || /^正确答案[：:]/.test(line.trim());
+    }
+    
+    function isAnalysisLine(line) {
+      return /解析/.test(line);
+    }
+    
+    function isEmpty(line) {
+      return !line.trim();
+    }
+    
+    function extractAnswer(fullText) {
+      const match = fullText.match(/答案[：:]\s*([A-Za-z,，]+)/);
+      return match ? match[1] : null;
+    }
+    
+    function cleanQuestionText(fullText) {
+      let qText = fullText
+        .replace(/答案[：:][^\n]*/g, '')
+        .replace(/正确答案[：:][^\n]*/g, '')
+        .replace(/解析[：:][^\n]*/g, '')
+        .replace(/【解析】[^\n]*/g, '')
+        .trim()
+        .replace(/^\d+[\.、\s　]+/, '')
+        .trim();
+      
+      qText = qText.split('\n')
+        .filter(l => !isOption(l))
+        .filter(l => !/^\d+[\.、　\s]/.test(l.trim()))
+        .filter(l => !isAnalysisLine(l))
+        .map(l => l.replace(/\s*[A-Z][\.、　].*$/, ''))
+        .filter(l => l.trim())
+        .join('\n');
+      
+      return qText;
+    }
+    
+    function normalizeAnswer(answer) {
+      let ans = answer.toUpperCase().replace(/，/g, ',');
+      if (/^[A-Z]+$/.test(ans) && ans.length > 1) {
+        ans = ans.split('').join(',');
+      }
+      return ans;
+    }
+    
+    // 状态机主逻辑
+    let added = 0, skipped = 0;
+    const preview = [];
+    const duplicates = [];
+    
+    let state = State.LOOKING_FOR_QUESTION;
+    let currentQALines = [];
+    let currentAnswer = null;
+    
+    debugLog('DEBUG', 'STATE_MACHINE', '开始状态机解析', { totalBlocks: contentBlocks.length });
+    
+    for (let i = 0; i < contentBlocks.length; i++) {
+      const line = contentBlocks[i];
+      const trimmed = line.trim();
+      
+      // 跳过空行（除了在收集状态中）
+      if (!trimmed && state !== State.COLLECTING_QUESTION && state !== State.COLLECTING_OPTIONS) {
+        continue;
+      }
+      
+      debugLog('TRACE', 'STATE_MACHINE', `状态: ${state}, 行: ${i}, 内容: ${trimmed.substring(0, 50)}`);
+      
+      switch (state) {
+        case State.LOOKING_FOR_QUESTION:
+          // 跳过分类标题
+          if (isCategoryTitle(line)) {
+            debugLog('DEBUG', 'STATE_MACHINE', '跳过分类标题', trimmed);
+            continue;
+          }
+          
+          // 找到题目开始
+          if (isQuestionStart(line)) {
+            currentQALines = [line];
+            currentAnswer = null;
+            state = State.COLLECTING_QUESTION;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 COLLECTING_QUESTION', trimmed.substring(0, 50));
+          }
+          break;
+          
+        case State.COLLECTING_QUESTION:
+          // 遇到选项 → 收集选项
+          if (isOption(line)) {
+            currentQALines.push(line);
+            state = State.COLLECTING_OPTIONS;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 COLLECTING_OPTIONS', trimmed);
+          }
+          // 遇到答案行 → 保存答案
+          else if (isAnswerLine(line)) {
+            currentQALines.push(line);
+            currentAnswer = extractAnswer(line);
+            state = State.FOUND_ANSWER;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 FOUND_ANSWER', trimmed);
+          }
+          // 遇到解析行 → 跳过
+          else if (isAnalysisLine(line)) {
+            state = State.FOUND_ANALYSIS;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 FOUND_ANALYSIS', trimmed);
+          }
+          // 遇到空行或分类标题 → 放弃当前题
+          else if (isEmpty(line) || isCategoryTitle(line)) {
+            debugLog('DEBUG', 'STATE_MACHINE', '题干收集失败，放弃', { lines: currentQALines.length });
+            currentQALines = [];
+            currentAnswer = null;
+            state = State.LOOKING_FOR_QUESTION;
+          }
+          // 其他行 → 多行题干
+          else {
+            currentQALines.push(line);
+          }
+          break;
+          
+        case State.COLLECTING_OPTIONS:
+          // 继续收集选项
+          if (isOption(line)) {
+            currentQALines.push(line);
+          }
+          // 遇到答案行
+          else if (isAnswerLine(line)) {
+            currentQALines.push(line);
+            currentAnswer = extractAnswer(line);
+            state = State.FOUND_ANSWER;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 FOUND_ANSWER', trimmed);
+          }
+          // 遇到解析行
+          else if (isAnalysisLine(line)) {
+            state = State.FOUND_ANALYSIS;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 FOUND_ANALYSIS', trimmed);
+          }
+          // 遇到下一题 → 缺少答案，跳过
+          else if (isQuestionStart(line)) {
+            debugLog('DEBUG', 'STATE_MACHINE', '缺少答案，跳过当前题', { lines: currentQALines.length });
+            currentQALines = [line]; // 开始新题
+            currentAnswer = null;
+            state = State.COLLECTING_QUESTION;
+          }
+          // 其他内容 → 忽略
+          else {
+            debugLog('TRACE', 'STATE_MACHINE', '忽略无关内容', trimmed.substring(0, 30));
+          }
+          break;
+          
+        case State.FOUND_ANSWER:
+          // 遇到解析行
+          if (isAnalysisLine(line)) {
+            state = State.FOUND_ANALYSIS;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 FOUND_ANALYSIS', trimmed);
+          }
+          // 遇到下一题或分类标题 → 保存当前题
+          else if (isQuestionStart(line) || isCategoryTitle(line)) {
+            // 保存当前题
+            if (currentAnswer) {
+              const fullText = currentQALines.join('\n');
+              const qText = cleanQuestionText(fullText);
+              
+              if (qText.length >= 4) {
+                const normalizedAnswer = normalizeAnswer(currentAnswer);
+                
+                if (db.hasOwnProperty(qText)) {
+                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
+                  skipped++;
+                } else {
+                  db[qText] = normalizedAnswer;
+                  added++;
+                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
+                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                }
+              } else {
+                skipped++;
+              }
+            }
+            
+            // 开始下一题
+            if (isQuestionStart(line)) {
+              currentQALines = [line];
+              currentAnswer = null;
+              state = State.COLLECTING_QUESTION;
+              debugLog('DEBUG', 'STATE_MACHINE', '开始新题', trimmed.substring(0, 50));
+            } else {
+              currentQALines = [];
+              currentAnswer = null;
+              state = State.LOOKING_FOR_QUESTION;
+            }
+          }
+          break;
+          
+        case State.FOUND_ANALYSIS:
+          // 遇到下一题或分类标题 → 保存当前题
+          if (isQuestionStart(line) || isCategoryTitle(line)) {
+            // 保存当前题
+            if (currentAnswer) {
+              const fullText = currentQALines.join('\n');
+              const qText = cleanQuestionText(fullText);
+              
+              if (qText.length >= 4) {
+                const normalizedAnswer = normalizeAnswer(currentAnswer);
+                
+                if (db.hasOwnProperty(qText)) {
+                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
+                  skipped++;
+                } else {
+                  db[qText] = normalizedAnswer;
+                  added++;
+                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
+                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                }
+              } else {
+                skipped++;
+              }
+            }
+            
+            // 开始下一题
+            if (isQuestionStart(line)) {
+              currentQALines = [line];
+              currentAnswer = null;
+              state = State.COLLECTING_QUESTION;
+              debugLog('DEBUG', 'STATE_MACHINE', '开始新题', trimmed.substring(0, 50));
+            } else {
+              currentQALines = [];
+              currentAnswer = null;
+              state = State.LOOKING_FOR_QUESTION;
+            }
+          }
+          // 其他行 → 忽略（解析行后面的内容）
+          else {
+            debugLog('TRACE', 'STATE_MACHINE', '忽略解析后内容', trimmed.substring(0, 30));
+          }
+          break;
+      }
+    }
+    
+    // 文档结束，保存最后一题
+    if (state === State.FOUND_ANSWER || state === State.FOUND_ANALYSIS) {
+      if (currentAnswer) {
+        const fullText = currentQALines.join('\n');
+        const qText = cleanQuestionText(fullText);
+        
+        if (qText.length >= 4) {
+          const normalizedAnswer = normalizeAnswer(currentAnswer);
+          
+          if (db.hasOwnProperty(qText)) {
+            duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
+            skipped++;
+          } else {
+            db[qText] = normalizedAnswer;
+            added++;
+            preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
+            debugLog('DEBUG', 'STATE_MACHINE', '文档结束，保存最后一题', { q: qText.substring(0, 50), a: normalizedAnswer });
+          }
+        } else {
+          skipped++;
+        }
+      }
+    }
+    
+    debugLog('INFO', 'STATE_MACHINE', `状态机解析完成`, { added, skipped, duplicates: duplicates.length });
     
     return { added, skipped, preview, duplicates };
   }

@@ -1,5 +1,30 @@
 # MinuteStars-AutoAnswer 项目规范
 
+## Docx 解析代码重构项目（2026-05-20）
+### 项目目标
+彻底重写 docx 文件解析代码，提高可维护性、支持全面格式、增强调试能力。
+
+### 已完成阶段
+- **Phase 1** (v4.8.35): 基础架构
+  - `parseDocxDocument` - 新入口函数
+  - `extractDocxXML` - 解压 docx 并提取 XML
+  - `extractContentBlocks` - 解析 XML 为段落文本数组
+  - `debugLog` - 调试日志函数
+
+- **Phase 2** (v4.8.36): 状态机解析
+  - `parseWithStateMachine` - 状态机版本解析器
+  - 状态定义: `LOOKING_FOR_QUESTION` → `COLLECTING_QUESTION` → `COLLECTING_OPTIONS` → `FOUND_ANSWER` → `FOUND_ANALYSIS`
+
+### 待完成阶段
+- **Phase 3**: 格式扩展（表格、页眉页脚支持）
+- **Phase 4**: 调试和优化
+- **Phase 5**: 测试和发布
+
+### 设计决策
+1. **状态机模式**: 替代原有的嵌套循环逻辑，更清晰、易维护
+2. **向后兼容**: 保留旧代码（Legacy 函数）暂不删除
+3. **增量重构**: 创建新架构函数但暂时调用旧逻辑，逐步替换
+
 ## v4.5.40 新增功能速查（2026-04-28）
 - Jaro-Winkler 模糊匹配（替换 Levenshtein）
 - N-gram 候选预筛选 + 长度分桶索引
