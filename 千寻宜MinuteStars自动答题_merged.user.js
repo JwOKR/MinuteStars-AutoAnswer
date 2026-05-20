@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.42
+// @version      4.8.43
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -2785,7 +2785,7 @@
           </div>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <label class="ata-btn purple" style="display:inline-block;margin:0;cursor:pointer">
-              📄 从 Word 文档导入（.docx）<input type="file" id="ata-docx-input" accept=".docx" style="display:none">
+              📄 从 Word 文档导入（.docx）<input type="file" id="ata-docx-input" accept=".docx" multiple style="display:none">
             </label>
             <label class="ata-btn orange" style="display:inline-block;margin:0;cursor:pointer">
               📊 从 Excel 导入（.xlsx）<input type="file" id="ata-xlsx-input" accept=".xlsx,.xls" style="display:none">
@@ -4116,74 +4116,100 @@
     e.target.value = '';
   });
   
-  // Word 文档导入事件
+  // Word 文档导入事件（支持多文件）
   document.getElementById('ata-docx-input').addEventListener('change', async function (e) {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
-    if (!file.name.endsWith('.docx')) {
-      showDocxMsg('❌ 请选择 .docx 文件（不是 .doc）', false);
-      e.target.value = '';
-      return;
-    }
-
-    // 检查文件大小（过小可能是损坏或 .doc 伪装）
-    if (file.size < 500) {
-      showDocxMsg('❌ 文件过小（' + file.size + ' 字节），可能不是有效的 .docx', false);
-      e.target.value = '';
-      return;
-    }
-
-    showDocxMsg('⏳ 正在解析 Word 文档…', false);
-
-    try {
-      const result = await parseDocxDocument(file);
-
-      if (result.errors && result.errors.length > 0) {
-        showDocxMsg('❌ ' + result.errors[0], false);
+    // 验证所有文件
+    for (const file of files) {
+      if (!file.name.endsWith('.docx')) {
+        showDocxMsg('❌ 请选择 .docx 文件（不是 .doc）：' + file.name, false);
+        e.target.value = '';
         return;
       }
+      if (file.size < 500) {
+        showDocxMsg('❌ 文件过小（' + file.size + ' 字节），可能不是有效的 .docx：' + file.name, false);
+        e.target.value = '';
+        return;
+      }
+    }
 
-      const { added, skipped, preview, duplicates } = result;
+    const fileCount = files.length;
+    showDocxMsg('⏳ 正在解析 ' + fileCount + ' 个 Word 文档…', false);
+
+    let totalAdded = 0, totalSkipped = 0;
+    const allDuplicates = [];
+    const allPreview = [];
+    const errors = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        showDocxMsg('⏳ 正在解析 (' + (i + 1) + '/' + fileCount + ')：' + file.name, false);
+
+        const result = await parseDocxDocument(file);
+
+        if (result.errors && result.errors.length > 0) {
+          errors.push(file.name + '：' + result.errors[0]);
+          continue;
+        }
+
+        totalAdded += result.added;
+        totalSkipped += result.skipped;
+        if (result.duplicates) allDuplicates.push(...result.duplicates);
+        if (result.preview) allPreview.push(...result.preview);
+      }
+
       refreshLibCount();
       refreshStats();
       renderBrowse(1);
 
       // 预览前几条
       let previewHtml = '';
-      if (preview.length > 0) {
-        previewHtml = ' | 示例：' + preview.slice(0, 3).map(p =>
-          '<span style="color:#ffa726">“' + p.q.substring(0, 30) + '…” → ' + p.a + '</span>'
+      if (allPreview.length > 0) {
+        previewHtml = ' | 示例：' + allPreview.slice(0, 3).map(p =>
+          '<span style="color:#ffa726">"' + p.q.substring(0, 30) + '…" → ' + p.a + '</span>'
         ).join(' &nbsp; ');
       }
 
-            if (added === 0 && skipped === 0) {
-        showDocxMsg('❌ 未找到任何题目（请确认文档格式：需包含「答案：X」格式）', false);
+      if (totalAdded === 0 && totalSkipped === 0) {
+        let errMsg = '❌ 未找到任何题目（请确认文档格式：需包含「答案：X」格式）';
+        if (errors.length > 0) {
+          errMsg += '<br>' + errors.join('<br>');
+        }
+        showDocxMsg(errMsg, false);
       } else {
         let dupHtml = '';
-        if (duplicates && duplicates.length > 0) {
-          const list = duplicates.slice(0, 10).map(d =>
+        if (allDuplicates.length > 0) {
+          const list = allDuplicates.slice(0, 10).map(d =>
             `<div style="margin:4px 0;padding:4px;background:#2a2a2a;border-radius:4px;font-size:11px">
               <div style="color:#ffa726">📌 ${escHtml(d.q.substring(0, 50))}${d.q.length > 50 ? '...' : ''}</div>
               <div style="color:#888">旧答案：${escHtml(d.oldAns)} → 新答案：${escHtml(d.newAns)}</div>
             </div>`
           ).join('');
-          const more = duplicates.length > 10 ? `<div style="color:#888">...还有 ${duplicates.length - 10} 条重复</div>` : '';
-          dupHtml = `<div style="margin-top:8px"><b style="color:#fbbf24">⚠️ ${duplicates.length} 条重复（已覆盖）</b>${list}${more}</div>`;
+          const more = allDuplicates.length > 10 ? `<div style="color:#888">...还有 ${allDuplicates.length - 10} 条重复</div>` : '';
+          dupHtml = `<div style="margin-top:8px"><b style="color:#fbbf24">⚠️ ${allDuplicates.length} 条重复（已覆盖）</b>${list}${more}</div>`;
         }
+
+        let errHtml = '';
+        if (errors.length > 0) {
+          errHtml = '<div style="margin-top:8px;color:#ef5350">⚠️ 部分文件解析失败：<br>' + errors.join('<br>') + '</div>';
+        }
+
+        const fileHint = fileCount > 1 ? '（' + fileCount + ' 个文件）' : '';
         showDocxMsg(
-          '✅ 成功导入 <b style="color:#66bb6a">' + added + '</b> 条' +
-          (skipped > 0 ? '，跳过 <b style="color:#ffa726">' + skipped + '</b> 条（已存在）' : '') +
-          dupHtml +
-          previewHtml,
+          '✅ 成功导入 <b style="color:#66bb6a">' + totalAdded + '</b> 条' + fileHint +
+          (totalSkipped > 0 ? '，跳过 <b style="color:#ffa726">' + totalSkipped + '</b> 条（已存在）' : '') +
+          dupHtml + previewHtml + errHtml,
           true
         );
-        uLog('📄 Word文档导入：新增 ' + added + ' 条（跳过 ' + skipped + ' 条）', added > 0 ? 'ok' : 'warn');
+        uLog('📄 Word文档导入：新增 ' + totalAdded + ' 条（跳过 ' + totalSkipped + ' 条，' + fileCount + ' 个文件）', totalAdded > 0 ? 'ok' : 'warn');
       }
     } catch (err) {
       console.error('[ATA] Docx parse error:', err);
       let msg = '❌ 解析失败';
-      
+
       // 区分不同错误类型
       if (err.message.includes("Can't find end of central directory")) {
         msg = '❌ 文件格式错误：请确认是 .docx 而非 .doc 格式<br><small style="color:#888">提示：.doc 是旧版 Word 格式，需要另存为 .docx 后重试</small>';
