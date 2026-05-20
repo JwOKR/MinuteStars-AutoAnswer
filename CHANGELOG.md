@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.8.38
+### ✨ 新功能
+- **Phase 3: 格式扩展 - 支持表格和页眉页脚**
+  - 新增 `extractBlocksFromTable` 函数（从表格中提取文本内容）
+  - 新增 `extractHeadersFooters` 函数（从页眉页脚中提取文本内容）
+  - 新增 `extractBlocksFromElement` 函数（从元素中提取段落内容）
+  - 新增 `extractTextFromElement` 函数（从元素中提取文本内容）
+  - 更新 `extractContentBlocks` 函数，支持段落、表格、页眉页脚三种格式
+  - 现在可以正确解析包含表格的 Word 文档中的题目
+
 ## v4.8.37
 ### 🐛 Bugfix
 - **修复状态机解析多行内容块的问题**

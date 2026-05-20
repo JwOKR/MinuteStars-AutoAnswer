@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.37
+// @version      4.8.38
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3572,9 +3572,101 @@
   }
   
   /**
-   * 新架构 Phase 1.3: 解析 XML 为内容块（基础版：只处理段落）
+   * Phase 3: 从表格中提取文本内容
+   * @param {Element} table - 表格元素
+   * @returns {string[]} 表格内容数组
+   */
+  function extractBlocksFromTable(table) {
+    const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const rows = table.getElementsByTagNameNS(ns, 'tr');
+    const blocks = [];
+    
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const cells = row.getElementsByTagNameNS(ns, 'tc');
+      
+      for (let c = 0; c < cells.length; c++) {
+        const cell = cells[c];
+        const cellText = extractTextFromElement(cell);
+        if (cellText) {
+          blocks.push(cellText);
+        }
+      }
+    }
+    
+    return blocks;
+  }
+  
+  /**
+   * Phase 3: 从页眉页脚中提取文本内容
+   * @param {Document} doc - XML 文档
+   * @returns {string[]} 页眉页脚内容数组
+   */
+  function extractHeadersFooters(doc) {
+    const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const blocks = [];
+    
+    // 提取页眉
+    const headers = doc.getElementsByTagNameNS(ns, 'hdr');
+    for (const header of headers) {
+      const headerBlocks = extractBlocksFromElement(header);
+      blocks.push(...headerBlocks);
+    }
+    
+    // 提取页脚
+    const footers = doc.getElementsByTagNameNS(ns, 'ftr');
+    for (const footer of footers) {
+      const footerBlocks = extractBlocksFromElement(footer);
+      blocks.push(...footerBlocks);
+    }
+    
+    return blocks;
+  }
+  
+  /**
+   * Phase 3: 从元素中提取段落内容
+   * @param {Element} element - XML 元素
+   * @returns {string[]} 段落内容数组
+   */
+  function extractBlocksFromElement(element) {
+    const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const paras = element.getElementsByTagNameNS(ns, 'p');
+    const blocks = [];
+    
+    for (const p of paras) {
+      const text = extractTextFromElement(p);
+      if (text) {
+        blocks.push(text);
+      }
+    }
+    
+    return blocks;
+  }
+  
+  /**
+   * Phase 3: 从元素中提取文本内容
+   * @param {Element} element - XML 元素
+   * @returns {string} 文本内容
+   */
+  function extractTextFromElement(element) {
+    const allEls = element.getElementsByTagName('*');
+    let text = '';
+    
+    for (const el of allEls) {
+      if (el.localName === 't') {
+        text += el.textContent || '';
+      } else if (el.localName === 'cr' || el.localName === 'br') {
+        text += '\n';
+      }
+    }
+    
+    return text.split('\n').map(l => l.trim()).filter(l => l).join('\n');
+  }
+  
+  /**
+   * 新架构 Phase 1.3 + Phase 3: 解析 XML 为内容块（支持段落和表格）
    * @param {string} xmlStr - XML 字符串
-   * @returns {string[]} 段落文本数组
+   * @returns {string[]} 内容块数组
    */
   function extractContentBlocks(xmlStr) {
     debugLog('DEBUG', 'EXTRACT_BLOCKS', '开始解析 XML 为内容块');
@@ -3589,23 +3681,33 @@
     }
     
     const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const blocks = [];
+    
+    // Step 1: 提取主文档段落
     const paras = doc.getElementsByTagNameNS(ns, 'p');
-    
-    const blocks = Array.from(paras).map(p => {
-      const allEls = p.getElementsByTagName('*');
-      let text = '';
-      for (const el of allEls) {
-        if (el.localName === 't') {
-          text += el.textContent || '';
-        } else if (el.localName === 'cr' || el.localName === 'br') {
-          text += '\n';
-        }
+    for (const p of paras) {
+      const text = extractTextFromElement(p);
+      if (text) {
+        blocks.push(text);
       }
-      return text.split('\n').map(l => l.trim()).filter(l => l).join('\n');
-    });
-    
+    }
     debugLog('DEBUG', 'EXTRACT_BLOCKS', `提取了 ${blocks.length} 个段落`);
-      return blocks;
+    
+    // Step 2: 提取表格
+    const tables = doc.getElementsByTagNameNS(ns, 'tbl');
+    for (const table of tables) {
+      const tableBlocks = extractBlocksFromTable(table);
+      blocks.push(...tableBlocks);
+    }
+    debugLog('DEBUG', 'EXTRACT_BLOCKS', `提取了 ${tables.length} 个表格`);
+    
+    // Step 3: 提取页眉页脚
+    const headerFooterBlocks = extractHeadersFooters(doc);
+    blocks.push(...headerFooterBlocks);
+    debugLog('DEBUG', 'EXTRACT_BLOCKS', `提取了 ${headerFooterBlocks.length} 个页眉页脚块`);
+    
+    debugLog('DEBUG', 'EXTRACT_BLOCKS', `总共提取了 ${blocks.length} 个内容块`);
+    return blocks;
   }
 
   /**
