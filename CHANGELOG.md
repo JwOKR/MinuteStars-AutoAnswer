@@ -1,5 +1,19 @@
 # Changelog
 
+## v4.8.40
+### 🧹 清理
+- **Phase 5: 代码清理 - 删除所有遗留的旧函数**
+  - 删除 `extractDocxXMLLegacy` 函数（Phase 1 兼容用）
+  - 删除 `extractContentBlocksLegacy` 函数（Phase 1 兼容用）
+  - 删除 `parseDocxBlob` 函数（旧入口函数）
+  - 删除 `loadJsZipAndParse` 函数（旧 JSZip 加载函数）
+  - 删除 `extractParagraphs` 函数（旧段落提取函数）
+  - 删除 `parseQAFromParagraphs` 函数（旧解析函数）
+  - 删除 `parseDocxXML` 函数（旧 XML 解析函数）
+  - 删除 `parseQAFromParagraphsNew` 函数（过渡期函数）
+  - 新架构（`parseDocxDocument` + `extractDocxXML` + `extractContentBlocks` + `parseWithStateMachine`）已完全替代旧代码
+  - **Docx 解析代码重构全部完成**
+
 ## v4.8.39
 ### 🔧 优化
 - **Phase 4: 调试和优化**
