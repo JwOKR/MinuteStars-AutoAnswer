@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.36
+// @version      4.8.37
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3434,7 +3434,15 @@
       const xmlStr = await extractDocxXML(buffer);
       
       // Phase 1.3: 解析 XML 为内容块（新架构）
-      const contentBlocks = extractContentBlocks(xmlStr);
+      const rawContentBlocks = extractContentBlocks(xmlStr);
+      
+      // 将多行内容块分割成单独的行
+      const contentBlocks = [];
+      for (const block of rawContentBlocks) {
+        const lines = block.split('\n').filter(l => l.trim());
+        contentBlocks.push(...lines);
+      }
+      debugLog('DEBUG', 'PARSE', `分割后共 ${contentBlocks.length} 行`);
       
       // Phase 2: 用状态机解析 Q&A（新架构）
       const qaPairs = parseWithStateMachine(contentBlocks, await LibraryManager.load());
