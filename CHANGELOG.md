@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.8.41
+### 🐛 Bugfix
+- **修复导入题库刷新后丢失的问题**
+  - 问题：`parseDocxDocument` 调用 `parseWithStateMachine` 后，虽然修改了 `db` 对象，但没有调用 `LibraryManager.save()` 持久化保存
+  - 解决：在状态机解析完成后，调用 `LibraryManager.save(db)` 保存到存储
+  - 效果：导入的题目现在可以正确持久化，刷新页面后不会丢失
+
 ## v4.8.40
 ### 🧹 清理
 - **Phase 5: 代码清理 - 删除所有遗留的旧函数**
