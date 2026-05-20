@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.38
+// @version      4.8.39
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3426,15 +3426,30 @@
     try {
       debugLog('INFO', 'PARSE_START', '开始解析 docx 文档');
       
-      // TODO Phase 1.1: 读取文件为 ArrayBuffer
+      // Phase 1.1: 读取文件为 ArrayBuffer
       const buffer = await blob.arrayBuffer();
       debugLog('DEBUG', 'PARSE', `文件大小: ${buffer.byteLength} bytes`);
+      
+      // 检查文件大小
+      if (buffer.byteLength < 100) {
+        throw new Error('文件过小，可能不是有效的 .docx 文件');
+      }
       
       // Phase 1.2: 解压并提取 XML（新架构）
       const xmlStr = await extractDocxXML(buffer);
       
+      // 检查 XML 内容
+      if (!xmlStr || xmlStr.length < 100) {
+        throw new Error('XML 内容为空或过小，文档可能损坏');
+      }
+      
       // Phase 1.3: 解析 XML 为内容块（新架构）
       const rawContentBlocks = extractContentBlocks(xmlStr);
+      
+      // 检查内容块
+      if (rawContentBlocks.length === 0) {
+        throw new Error('未提取到任何内容块，文档可能为空或格式不支持');
+      }
       
       // 将多行内容块分割成单独的行
       const contentBlocks = [];
@@ -3444,18 +3459,47 @@
       }
       debugLog('DEBUG', 'PARSE', `分割后共 ${contentBlocks.length} 行`);
       
+      // 检查分割后的行数
+      if (contentBlocks.length === 0) {
+        throw new Error('分割后未找到任何有效行，文档内容可能为空');
+      }
+      
       // Phase 2: 用状态机解析 Q&A（新架构）
       const qaPairs = parseWithStateMachine(contentBlocks, await LibraryManager.load());
       
       // 当前 qaPairs 已经包含 {added, skipped, preview, duplicates}
       
       debugLog('INFO', 'PARSE_COMPLETE', `完成: added=${qaPairs.added}, skipped=${qaPairs.skipped}`);
+      
+      // 如果没有添加任何题目，记录警告
+      if (qaPairs.added === 0) {
+        debugLog('WARN', 'PARSE_COMPLETE', '未添加任何题目，请检查文档格式');
+      }
+      
       return qaPairs;
       
     } catch (err) {
       console.error('[DocxParser] 解析失败:', err);
       debugLog('ERROR', 'PARSE_ERROR', err.message);
-      return { added: 0, skipped: 0, errors: [err.message], preview: [], duplicates: [] };
+      
+      // 提供用户友好的错误信息
+      let userMessage = err.message;
+      if (err.message.includes('JSZip')) {
+        userMessage = '无法加载解压库，请检查网络连接';
+      } else if (err.message.includes('word/document.xml')) {
+        userMessage = '文档格式异常，可能不是有效的 .docx 文件';
+      } else if (err.message.includes('XML 解析失败')) {
+        userMessage = '文档内容损坏，无法解析';
+      }
+      
+      return { 
+        added: 0, 
+        skipped: 0, 
+        errors: [userMessage], 
+        preview: [], 
+        duplicates: [],
+        debugLog: window.__docxDebugLog || [] // 附带调试日志
+      };
     }
   }
 
@@ -3501,23 +3545,97 @@
   /**
    * 调试日志函数
    */
+  // 日志级别定义
+  const LogLevel = {
+    ERROR: 0,
+    WARN: 1,
+    INFO: 2,
+    DEBUG: 3,
+    TRACE: 4
+  };
+  
+  // 当前日志级别（可通过配置调整）
+  let currentLogLevel = LogLevel.DEBUG;
+  
+  /**
+   * 增强版调试日志函数
+   * @param {string} level - 日志级别（ERROR/WARN/INFO/DEBUG/TRACE）
+   * @param {string} category - 日志分类
+   * @param {string} message - 日志消息
+   * @param {*} data - 附加数据
+   */
   function debugLog(level, category, message, data) {
+    // 检查日志级别
+    const levelNum = LogLevel[level] || LogLevel.DEBUG;
+    if (levelNum > currentLogLevel) return;
+    
+    const timestamp = new Date().toISOString();
     const logEntry = {
-      timestamp: Date.now(),
+      timestamp,
       level,
       category,
       message,
       data
     };
     
+    // 存储到全局变量
     if (!window.__docxDebugLog) window.__docxDebugLog = [];
     window.__docxDebugLog.push(logEntry);
     
-    if (level === 'ERROR') console.error(`[DocxParser][${category}] ${message}`, data);
-    else if (level === 'WARN') console.warn(`[DocxParser][${category}] ${message}`, data);
-    else if (level === 'INFO') console.info(`[DocxParser][${category}] ${message}`, data);
-    else console.log(`[DocxParser][${category}] ${message}`, data);
+    // 格式化输出
+    const prefix = `[DocxParser][${timestamp}][${level}][${category}]`;
+    const logMessage = `${prefix} ${message}`;
+    
+    // 根据级别输出
+    if (level === 'ERROR') {
+      console.error(logMessage, data);
+    } else if (level === 'WARN') {
+      console.warn(logMessage, data);
+    } else if (level === 'INFO') {
+      console.info(logMessage, data);
+    } else if (level === 'DEBUG') {
+      console.debug(logMessage, data);
+    } else {
+      console.log(logMessage, data);
+    }
   }
+  
+  /**
+   * 显示调试日志（可在控制台调用）
+   * 用法：showDocxDebugLog()
+   */
+  function showDocxDebugLog() {
+    const log = window.__docxDebugLog || [];
+    if (log.length === 0) {
+      console.log('[DocxParser] 暂无调试日志');
+      return;
+    }
+    
+    console.group('[DocxParser] 调试日志');
+    console.log(`共 ${log.length} 条记录`);
+    console.table(log.map(entry => ({
+      时间: entry.timestamp,
+      级别: entry.level,
+      分类: entry.category,
+      消息: entry.message,
+      数据: entry.data ? JSON.stringify(entry.data).substring(0, 100) : ''
+    })));
+    console.groupEnd();
+    
+    return log;
+  }
+  
+  /**
+   * 清空调试日志
+   */
+  function clearDocxDebugLog() {
+    window.__docxDebugLog = [];
+    console.log('[DocxParser] 调试日志已清空');
+  }
+  
+  // 将调试函数暴露到全局
+  window.showDocxDebugLog = showDocxDebugLog;
+  window.clearDocxDebugLog = clearDocxDebugLog;
 
   // ========== 新架构 Phase 1.2: extractDocxXML ==========
   

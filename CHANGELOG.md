@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.8.39
+### 🔧 优化
+- **Phase 4: 调试和优化**
+  - 增强 `debugLog` 函数，添加日志级别控制（ERROR/WARN/INFO/DEBUG/TRACE）
+  - 新增 `showDocxDebugLog` 函数（在控制台显示调试日志）
+  - 新增 `clearDocxDebugLog` 函数（清空调试日志）
+  - 改进 `parseDocxDocument` 错误处理，提供更友好的用户提示
+  - 添加文件大小检查、XML内容检查、内容块检查
+  - 在解析失败时附带调试日志，便于问题定位
+
 ## v4.8.38
 ### ✨ 新功能
 - **Phase 3: 格式扩展 - 支持表格和页眉页脚**
