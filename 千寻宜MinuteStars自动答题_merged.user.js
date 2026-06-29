@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.51
+// @version      4.8.52
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -4185,17 +4185,15 @@
           const more = duplicates.length > 10 ? `<div style="color:#888">...还有 ${duplicates.length - 10} 条重复</div>` : '';
           dupHtml = `<div style="margin-top:8px"><b style="color:#fbbf24">⚠️ ${duplicates.length} 条重复（已覆盖）</b>${list}${more}</div>`;
         }
-        const hasResult = added > 0 || skipped > 0;
-        // 导出数据：优先用 debugLog，回退用 result 数据
-        window.__excelImportResult = { fileName: file.name, timestamp: new Date().toISOString(), added, skipped, duplicates: duplicates || [], errors: errors || [], preview: preview || [] };
-        const exportBtn = hasResult
-          ? `<div style="margin-top:6px"><button id="ata-export-docx-log" style="background:#555;color:#ddd;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px">📋 导出本次解析报告</button></div>`
+
+        const logCount = (window.__docxDebugLog || []).length;
+        const exportBtn = logCount > 0
+          ? `<div style="margin-top:6px"><button id="ata-export-docx-log" style="background:#555;color:#ddd;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px">📋 导出本次解析日志（${logCount} 条）</button></div>`
           : '';
         showDocxMsg(
           '✅ 成功导入 <b style="color:#66bb6a">' + added + '</b> 条' +
           (skipped > 0 ? '，跳过 <b style="color:#ffa726">' + skipped + '</b> 条（已存在）' : '') +
-          dupHtml +
-          previewHtml + exportBtn,
+          dupHtml + previewHtml + exportBtn,
           true
         );
         uLog('📊 Excel文档导入：新增 ' + added + ' 条（跳过 ' + skipped + ' 条）', added > 0 ? 'ok' : 'warn');
@@ -4205,34 +4203,19 @@
       showDocxMsg('❌ 解析失败: ' + err.message, false);
     }
 
-    // 绑定导出日志按钮（如果有）
+    // 绑定导出日志按钮
     setTimeout(() => {
       const btn = document.getElementById('ata-export-docx-log');
       if (btn) {
         btn.addEventListener('click', () => {
           const log = window.__docxDebugLog || [];
-          let content;
-          if (log.length > 0) {
-            // 优先使用 debugLog 详细日志
-            content = JSON.stringify(log, null, 2);
-          } else {
-            // 回退：从导入结果构造导出报告
-            const r = window.__excelImportResult || {};
-            content = JSON.stringify({
-              exportTime: new Date().toISOString(),
-              fileName: r.fileName || 'unknown',
-              summary: { added: r.added || 0, skipped: r.skipped || 0, errors: (r.errors || []).length },
-              duplicates: r.duplicates || [],
-              errors: r.errors || [],
-              preview: (r.preview || []).slice(0, 20)
-            }, null, 2);
-          }
+          const content = JSON.stringify(log, null, 2);
           const date = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
           downloadFile(content, 'Excel解析日志_' + date + '.json', 'application/json');
         });
       }
     }, 100);
-    
+
     e.target.value = '';
   });
   
