@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.9
+### 🔧 调整
+- 提交延迟默认从 40-120s 改为 20-30s
+
 ## v4.9.8
 ### 🔧 调整
 - `cloudReadMode` 保存 fallback 从 `'local'` 改为 `'cloud'`，与 CFG_DEFAULT 一致

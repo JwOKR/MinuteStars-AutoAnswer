@@ -121,8 +121,8 @@
     autoLogin:   false,
     autoAnswer:  true,   // 加载后自动答题
     autoSubmit:  true,   // 答完自动提交
-    submitDelayMin: 40,
-    submitDelayMax: 120,
+    submitDelayMin: 20,
+    submitDelayMax: 30,
     answerDelay: 120,
     fuzzyEnable: false,
     fuzzyThresh: 0.75,
@@ -4905,8 +4905,8 @@
     CFG.autoAnswer      = gChk('cfg-auto-answer');
     CFG.autoSubmit      = gChk('cfg-auto-submit');
     CFG.answerDelay     = Math.max(0, parseInt(gVal('cfg-answer-delay'), 10) || 120);
-    CFG.submitDelayMin  = Math.max(5, parseInt(gVal('cfg-submit-min'), 10) || 40);
-    CFG.submitDelayMax  = Math.max(CFG.submitDelayMin + 5, parseInt(gVal('cfg-submit-max'), 10) || 120);
+    CFG.submitDelayMin  = Math.max(5, parseInt(gVal('cfg-submit-min'), 10) || 20);
+    CFG.submitDelayMax  = Math.max(CFG.submitDelayMin + 5, parseInt(gVal('cfg-submit-max'), 10) || 30);
     CFG.autoLogin       = gChk('cfg-auto-login');
     CFG.username        = gVal('cfg-username').trim();
     CFG.password        = gVal('cfg-password');
