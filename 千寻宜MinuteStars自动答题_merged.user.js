@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.1
+// @version      4.9.2
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -2270,19 +2270,6 @@
         <label class="ata-toggle"><input type="checkbox" id="cfg-notify-enable"><span class="ata-slider"></span></label>
       </div>
 
-      <div class="ata-row">
-      </div>
-        <div class="ata-row">
-          <span class="ata-label">AI 模型</span>
-          </select>
-        </div>
-        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        </div>
-        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-          <span class="ata-label">API 地址</span>
-        </div>
-      </div>
-
       <div class="ata-section-title">云同步 <span style="font-size:10px;color:#aaa">(Gitee 仓库)</span></div>
       <div class="ata-row">
         <span class="ata-label">启用云同步</span>
@@ -2304,7 +2291,21 @@
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">题库路径</span>
           <input type="text" id="cfg-cloud-file-path" class="ata-text-input" placeholder="tiku.json" style="width:100%;box-sizing:border-box">
-          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 仓库文件路径，默认 tiku.json；分享链接：https://gitee.com/law-of-order/MinuteStars-AutoAnswer/raw/main/<b id="cfg-share-preview">tiku.json</b></div>
+          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 分享链接：https://gitee.com/<b id="cfg-share-repo">law-of-order/MinuteStars-AutoAnswer</b>/raw/<b id="cfg-share-branch">main</b>/<b id="cfg-share-preview">tiku.json</b></div>
+        </div>
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="ata-label">仓库路径</span>
+          <input type="text" id="cfg-cloud-repo-path" class="ata-text-input" placeholder="owner/repo" style="width:100%;box-sizing:border-box">
+          <div style="font-size:10px;color:#888;margin-top:2px">💡 格式：用户名/仓库名，如 law-of-order/MinuteStars-AutoAnswer</div>
+        </div>
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+          <span class="ata-label">分支</span>
+          <input type="text" id="cfg-cloud-branch" class="ata-text-input" placeholder="main" style="width:100%;box-sizing:border-box">
+        </div>
+        <div class="ata-row">
+          <span class="ata-label">数据压缩</span>
+          <label class="ata-toggle"><input type="checkbox" id="cfg-compress-enable"><span class="ata-slider"></span></label>
+          <span style="font-size:10px;color:#888;margin-left:4px">LZ-string 压缩，减少存储占用</span>
         </div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px" title="上传本地题库到仓库文件，与云端合并去重">⬆ 上传题库（合并）</button>
@@ -4823,11 +4824,18 @@
     // 根据当前模型加载对应配置
     setChk('cfg-cloud-sync-enable', CFG.cloudSyncEnable);
     setVal('cfg-cloud-file-path',  CFG.cloudFilePath);
+    setVal('cfg-cloud-repo-path',  CFG.cloudRepoPath);
+    setVal('cfg-cloud-branch',      CFG.cloudBranch);
     setVal('cfg-cloud-token',       CFG.cloudToken);
     setVal('cfg-cloud-read-mode',   CFG.cloudReadMode);
+    setChk('cfg-compress-enable',   CFG.compressEnable);
     // 更新分享链接预览
     const preview = ge('cfg-share-preview');
     if (preview) preview.textContent = CFG.cloudFilePath || 'tiku.json';
+    const repoPreview = ge('cfg-share-repo');
+    if (repoPreview) repoPreview.textContent = CFG.cloudRepoPath || 'law-of-order/MinuteStars-AutoAnswer';
+    const branchPreview = ge('cfg-share-branch');
+    if (branchPreview) branchPreview.textContent = CFG.cloudBranch || 'main';
     // 联动显示
     const cloudRow = ge('cfg-cloud-row');
     if (cloudRow) cloudRow.style.opacity = CFG.cloudSyncEnable ? '1' : '.4';
@@ -4886,9 +4894,11 @@
     // 同时更新全局（向后兼容）
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
     CFG.cloudFilePath    = gVal('cfg-cloud-file-path').trim() || 'tiku.json';
+    CFG.cloudRepoPath    = gVal('cfg-cloud-repo-path').trim() || 'law-of-order/MinuteStars-AutoAnswer';
+    CFG.cloudBranch      = gVal('cfg-cloud-branch').trim() || 'main';
     CFG.cloudToken       = gVal('cfg-cloud-token').trim();
     CFG.cloudReadMode    = gVal('cfg-cloud-read-mode') || 'local';
-    saveCFG();
+    CFG.compressEnable   = gChk('cfg-compress-enable');
     // 模式切换后刷新缓存
     _cache.dirty = true;
     if (CFG.cloudReadMode === 'cloud') fetchCloudDB(); // 立即拉取云端

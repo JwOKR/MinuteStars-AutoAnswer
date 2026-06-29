@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.9.2
+### ✨ 新增
+- **补全设置面板缺失项**
+  - 仓库路径（`cloudRepoPath`）— 可自定义 Gitee 仓库 owner/repo
+  - 分支名（`cloudBranch`）— 可自定义仓库分支（默认 main）
+  - 数据压缩（`compressEnable`）— LZ-string 压缩开关，减少存储占用
+- **清理 AI 残留 HTML** — 删除设置面板中遗留的 AI 相关空元素和错误的 `</select>` `</div>` 标记
+
 ## v4.9.1
 ### 🐛 修复
 - **修复 AI 模块移除残留 bug**
