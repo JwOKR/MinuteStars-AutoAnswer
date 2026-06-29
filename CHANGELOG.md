@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.26
+### ✨ 新增/变更
+- **内置加密密码改为 1129** — `_getEncryptKey()` 默认值从 `ATA_DEFAULT_KEY` 改为 `1129`，留空加密密码时自动使用
+
 ## v4.9.25
 ### 🐛 修复
 - **换电脑/新环境获取不到云端题库** — Gitee raw 链接会 302 重定向到 `raw.giteeusercontent.com`，该域名未在 `@connect` 白名单中导致 GM_xhr 拒绝连接。新增 `@connect giteeusercontent.com`

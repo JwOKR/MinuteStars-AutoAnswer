@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.25
+// @version      4.9.26
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -141,7 +141,7 @@
     cloudGistId:      '',     // [已废弃] 旧 Gist ID（用于迁移）
     cloudToken:       '',     // Gitee 私人令牌
     cloudEncrypt:     false,  // 加密上传（AES-GCM）
-    cloudEncryptKey:  '',     // 加密密码（留空则每次随机生成）
+    cloudEncryptKey:  '',     // 加密密码（留空使用内置密码 1129）
     customDomains:    [],    // 自定义匹配域名（运行时生效）
   };
 
@@ -1220,7 +1220,7 @@
   /** 获取加密密码（配置为空时用 token 派生，保证多端可读） */
   function _getEncryptKey() {
     if (CFG.cloudEncryptKey && CFG.cloudEncryptKey.trim()) return CFG.cloudEncryptKey.trim();
-    return 'ATA_DEFAULT_KEY';
+    return '1129';
   }
 
   // ==================== Gitee 仓库 URL / 读写 ====================
