@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.18
+// @version      4.9.19
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1245,18 +1245,18 @@
     if (!CFG.cloudSyncEnable || !CFG.cloudToken) {
       uLog('⚠️ 请先在设置中填写 Token 并开启云同步', 'warn'); return false;
     }
-    const cfm = confirm('⚠️ 确定要删除 Gitee 上的题库文件吗？\n\n文件: ' + CFG.cloudFilePath + '\n\n此操作不可撤销！');
+    const cfm = confirm('⚠️ 确定要清空 Gitee 上的题库文件吗？\n\n文件: ' + CFG.cloudFilePath + '\n\n将写入空题库 {}');
     if (!cfm) return false;
-    uLog('🗑 正在删除云端题库…', 'info');
+    uLog('🗑 正在清空云端题库…', 'info');
     try {
-      await _deleteRepoFile(CFG.cloudFilePath);
-      _cloudCache = null;
-      _cloudCacheTime = 0;
-      uLog('✅ 云端题库已删除', 'ok');
-      gmNotify('云同步', '云端题库已删除');
+      await _writeRepoFile(CFG.cloudFilePath, '{}', '清空题库（重置）');
+      _cloudCache = {};
+      _cloudCacheTime = Date.now();
+      uLog('✅ 云端题库已清空', 'ok');
+      gmNotify('云同步', '云端题库已清空');
       return true;
     } catch (e) {
-      uLog('❌ 删除失败: ' + e.message, 'err');
+      uLog('❌ 清空失败: ' + e.message, 'err');
       return false;
     }
   }
@@ -2409,7 +2409,7 @@
           <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px" title="上传本地题库到仓库文件，与云端合并去重">⬆ 上传题库（合并）</button>
           <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px" title="从仓库下载题库，覆盖本地所有题目">⬇ 下载题库（覆盖）</button>
           <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px" title="从仓库追加导入到本地（不影响云端文件）">☁ 导入云端</button>
-          <button class="ata-btn red"    id="ata-cloud-delete" style="font-size:11px;padding:4px 10px" title="删除 Gitee 仓库中的题库文件（不可恢复）">🗑 删除云端</button>
+          <button class="ata-btn red"    id="ata-cloud-delete" style="font-size:11px;padding:4px 10px" title="将云端题库重置为空 {}">🗑 清空云端</button>
         </div>
         <div style="font-size:10px;color:#888;margin-top:4px">💡 <b>本地</b>：下载到本地，离线可用 | <b>直读云端</b>：实时拉取，无需下载，缓存 5 分钟</div>
       </div>
