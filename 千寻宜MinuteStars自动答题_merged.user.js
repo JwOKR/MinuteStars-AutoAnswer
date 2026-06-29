@@ -888,7 +888,7 @@
   function jaroWinkler(a, b) {
     if (!a || !b) return 0;
     if (a === b) return 1;
-    const la = a.length, lb = b.length;
+    let la = a.length, lb = b.length;
     if (la > lb) { [a, b] = [b, a]; [la, lb] = [lb, la]; }
     const matchDist = Math.floor(lb / 2) - 1;
     if (matchDist < 0) return 0;
