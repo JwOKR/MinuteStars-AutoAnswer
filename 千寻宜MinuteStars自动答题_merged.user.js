@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.21
+// @version      4.9.22
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1157,6 +1157,17 @@
      ⚡ 公开可分享、国内网络快、读免认证
   ========================================================= */
 
+  /** v4.9.22 安全 Base64 编码（分块避免大题库栈溢出） */
+  function _stringToBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    const len = bytes.length, CHUNK = 8192;
+    const parts = [];
+    for (let i = 0; i < len; i += CHUNK) {
+      parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
+    }
+    return btoa(parts.join(''));
+  }
+
   // ==================== 加密/解密（AES-GCM） ====================
 
   const _ENC_PREFIX = 'ENC:';
@@ -1287,7 +1298,7 @@
     }
 
     const payload = JSON.stringify({
-      content: btoa(String.fromCharCode(...new TextEncoder().encode(finalContent))),
+      content: _stringToBase64(finalContent),
       message: message,
       branch: CFG.cloudBranch,
       ...(sha ? { sha } : {}),

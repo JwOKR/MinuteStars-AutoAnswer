@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.22
+### 🐛 修复
+- **Maximum call stack size exceeded** — 上传时 `String.fromCharCode(...Uint8Array)` 展开大题库导致栈溢出，改为 8KB 分块拼接
+
 ## v4.9.21
 ### 🐛 修复
 - **ReferenceError: Cannot access 'logEl' before initialization** — `uLog()` 改为惰性 DOM 查询，避免 `const` TDZ 导致初始化阶段 `handleLogin()` 调用崩溃
