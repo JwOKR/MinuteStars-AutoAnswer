@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.9
+// @version      4.9.10
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -743,7 +743,12 @@
       refreshStats();
       return _cloudCache;
     } catch (e) {
-      uLog('❌ 云端题库拉取失败: ' + e.message, 'err');
+      const msg = e.message || '';
+      if (msg.includes('文件不存在') || msg.includes('不存在')) {
+        uLog('☁ 云端题库为空（文件未创建），使用本地题库', 'warn');
+      } else {
+        uLog('❌ 云端题库拉取失败: ' + msg, 'err');
+      }
       return null;
     }
   }
@@ -1162,6 +1167,10 @@
     try {
       return await _cloudReq('GET', rawUrl);
     } catch {
+      // raw 链接失败（404/401等），检查是否有 Token 可用
+      if (!CFG.cloudToken) {
+        throw new Error('题库文件不存在（需先用 Token 上传一次）');
+      }
       uLog('⚠️ raw 链接失败，尝试 API 读取', 'warn');
       // 回退到 API（需要 Token）
       const apiUrl = repoApiUrl(filePath) + '?access_token=' + CFG.cloudToken;

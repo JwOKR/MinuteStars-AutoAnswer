@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.10
+### 🐛 修复
+- 云端题库文件未创建时避免 401 错误：`_readRepoFile` 在无 Token 时不尝试 API 回退
+- `fetchCloudDB` 区分"文件不存在"和"拉取失败"，前者用 warn 而非 error
+
 ## v4.9.9
 ### 🔧 调整
 - 提交延迟默认从 40-120s 改为 20-30s
