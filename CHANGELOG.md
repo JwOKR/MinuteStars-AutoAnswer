@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.9.5
+### 🐛 修复
+- **修复自动登录不生效**
+  - 浏览器自动填充干扰：`if (user.value) return` 改为 `user.value !== CFG.username`，填充正确用户名后仍会点登录
+  - SPA 导航不触发：添加 `MutationObserver` 监听登录表单 DOM 出现
+  - 防重复：`_loginHandled` 标记防止重复触发
+  - 新增账号密码空值检查，未配置时静默跳过
+
 ## v4.9.4
 ### 🐛 修复
 - **修复 `pct is not defined`** — `updateStatsCards()` 调用在 AI 移除时被误删，补回调用并赋值 `pct`

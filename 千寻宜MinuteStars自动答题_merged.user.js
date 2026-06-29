@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.4
+// @version      4.9.5
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -2052,36 +2052,60 @@
   /* =========================================================
      自动登录
   ========================================================= */
+  let _loginHandled = false; // 防止重复处理
+
   function handleLogin() {
+    if (_loginHandled) return;
     if (!CFG.autoLogin) return;
+    if (!CFG.username || !CFG.password) return;
+
     const user = $('#txtUserName'), pass = $('#txtPassword'), btn = $('#btnLogin');
     if (!user || !pass || !btn) return;
-    if (user.value) return; // 已填过
 
     const errEl = $('#MessageError');
     if (errEl && errEl.textContent.trim()) return;
 
-    setTimeout(() => {
-      user.value = CFG.username;
-      ['input','change'].forEach(ev => user.dispatchEvent(new Event(ev, {bubbles:true})));
-    }, 300);
-    setTimeout(() => {
-      pass.value = CFG.password;
-      ['input','change'].forEach(ev => pass.dispatchEvent(new Event(ev, {bubbles:true})));
-    }, 600);
+    _loginHandled = true;
+    uLog('🔑 自动登录中...', 'ok');
+
+    const needsFill = user.value !== CFG.username;
+    const delay = needsFill ? 300 : 100; // 无需填写时加快
+
+    if (needsFill) {
+      setTimeout(() => {
+        user.value = CFG.username;
+        ['input','change'].forEach(ev => user.dispatchEvent(new Event(ev, {bubbles:true})));
+      }, delay);
+      setTimeout(() => {
+        pass.value = CFG.password;
+        ['input','change'].forEach(ev => pass.dispatchEvent(new Event(ev, {bubbles:true})));
+      }, delay + 300);
+    }
+
     setTimeout(() => {
       const captcha = $('#txtCapcha'), captchaWrap = $('#liCapcha');
       if (captcha && captchaWrap && getComputedStyle(captchaWrap).display !== 'none') {
         captchaWrap.style.border = '2px solid red';
-        console.log('[ATA] 需要验证码，请手动填写');
+        uLog('⚠️ 需要验证码，请手动填写', 'warn');
       } else {
+        uLog('✅ 点击登录...', 'ok');
         btn.click();
       }
-    }, 1000);
+    }, needsFill ? 1000 : 500);
   }
 
-  // 先执行登录逻辑（任何页面）
+  // 立即尝试（整页刷新场景）
   handleLogin();
+
+  // 监听 DOM 变化，处理 SPA 导航到登录页的场景
+  if (!_loginHandled) {
+    const _loginObserver = new MutationObserver(() => {
+      if (!_loginHandled) handleLogin();
+    });
+    _loginObserver.observe(document.documentElement, { childList: true, subtree: true });
+    // 10 秒后停止监听（避免长期性能开销）
+    setTimeout(() => _loginObserver.disconnect(), 10000);
+  }
 
   // 非答题/查看答案页静默退出
   if (!isAnswerPage() && !isViewPage()) return;
