@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.9.0
+### 🔥 重大变更
+- **彻底移除 AI 辅助模块**
+  - 删除所有 AI 相关函数（`aiMatch`、`aiValidateAnswer`、`aiAnalyzeWrongAnswer` 等）
+  - 移除 AI 设置 UI（模型选择、API Key、Endpoint）
+  - 移除 AI 统计显示（方法分布不再含 AI）
+  - 移除 AI 键盘快捷键（Ctrl+Shift+A）
+  - 移除策略预设中的 AI 选项
+  - 清理 AI CSS 样式
+  - 代码精简约 370 行
+
 ## v4.8.53
 ### ⚙️ 默认值调整
 - **模糊匹配默认关闭**（新用户/重置配置后默认精确匹配，需手动开启）

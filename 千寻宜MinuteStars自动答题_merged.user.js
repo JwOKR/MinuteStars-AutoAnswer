@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.53
+// @version      4.9.0
 // @author       JIA
-// @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
 // @match        *://*.chaoxing.com/*
@@ -131,18 +130,7 @@
     // v4.5.39 新增
     shortcutsEnable:  true,   // 快捷键（Alt+Enter答题/提交，Alt+S暂停）
     notifyEnable:     true,   // 系统通知（GM_notification）
-    aiEnable:         false,  // AI 辅助匹配（题库无命中时的语义兜底）
-    compressEnable:   false,  // 压缩支持（LZ-string，可减少存储占用，默认关闭）
-    aiApiKey:         '',     // DeepSeek / 硅基流动 API Key
-    aiEndpoint:       'https://api.siliconflow.cn/v1/chat/completions', // 默认用硅基流动（免费额度）
-    // v4.8.0 多 AI 模型支持
-    aiModel:          'deepseek', // 当前模型：deepseek / openai / claude / gemini
-    aiModels:         {        // 各模型配置（可覆盖全局 apiKey/endpoint）
-      deepseek:  { apiKey:'', endpoint:'https://api.siliconflow.cn/v1/chat/completions', model:'deepseek-ai/DeepSeek-V3' },
-      openai:    { apiKey:'', endpoint:'https://api.openai.com/v1/chat/completions',    model:'gpt-4o' },
-      claude:    { apiKey:'', endpoint:'https://api.anthropic.com/v1/messages',      model:'claude-3-5-sonnet-20241022' },
-      gemini:    { apiKey:'', endpoint:'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent', model:'' },
-    },
+    compressEnable:   false,  // 压缩支持（LZ-string，可减少存储占用，默认关闭）    },
     cloudSyncEnable:  true,   // 云同步开关（默认打开）
     cloudReadMode:    'cloud', // 'local'=本地存储答题（需下载），'cloud'=直读云端答题（不落地）
     cloudRepoPath:    'law-of-order/MinuteStars-AutoAnswer', // 仓库路径（owner/repo）
@@ -1150,319 +1138,6 @@
     return JSON.stringify({ ...meta, entries: _answerLog }, null, 2);
   }
 
-  /* =========================================================
-     AI 辅助匹配（DeepSeek / 硅基流动 API）
-     ⚡ v4.5.39：题库无命中时的语义兜底
-     ⚡ v4.6.0：AI重试机制 + 去重缓存 + 连续失败自动禁用
-  ========================================================= */
-  const _aiCache = new Map();       // 请求去重缓存（同题只问一次）
-  const AI_FAIL_THRESHOLD = 5;     // 连续失败 N 次后自动禁用 AI
-  let _aiFailCount = 0;           // 连续失败计数器
-
-  function buildAIPayload(qText, optTexts) {
-    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
-    const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
-    const modelName = modelCfg.model || '';
-    let requestBody, headers = { 'Content-Type': 'application/json' }, url = endpoint;
-
-    const prompt = `你是一个考试答题助手。请根据以下题目和选项，选出正确答案。\n\n题目：${qText}\n选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}\n\n请直接回复正确答案的字母（A/B/C/D...），如果是多选题用逗号分隔（如 A,C）。不要解释。`;
-
-    if (CFG.aiModel === 'claude') {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = '2023-06-01';
-      requestBody = JSON.stringify({ model: modelName, max_tokens: 32, messages: [{ role: 'user', content: prompt }] });
-    } else if (CFG.aiModel === 'gemini') {
-      url = endpoint + '?key=' + apiKey;
-      requestBody = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 32, temperature: 0.1 } });
-    } else {
-      headers['Authorization'] = 'Bearer ' + apiKey;
-      requestBody = JSON.stringify({ model: modelName, messages: [{ role: 'user', content: prompt }], max_tokens: 32, temperature: 0.1 });
-    }
-    return { url, headers, body: requestBody };
-  }
-
-  function parseAIResponse(resp) {
-    if (resp.status !== 200) return { status: resp.status, result: null };
-    const data = JSON.parse(resp.responseText);
-    let content = '';
-    if (CFG.aiModel === 'claude') content = (data.content?.[0]?.text || '').trim();
-    else if (CFG.aiModel === 'gemini') content = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    else content = (data.choices?.[0]?.message?.content || '').trim();
-    const match = content.match(/^[A-Z](?:,[A-Z])*$/i);
-    return match ? { status: 200, result: match[0].toUpperCase() } : { status: 200, result: null };
-  }
-
-  async function doAIRequest(url, headers, body) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', url, true);
-      for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
-      xhr.timeout = 15000;
-      xhr.onload = () => {
-        if (xhr.status === 200) resolve(xhr);
-        else { const err = new Error('HTTP ' + xhr.status); err.status = xhr.status; err.responseText = xhr.responseText; reject(err); }
-      };
-      xhr.onerror = () => reject(new Error('network error'));
-      xhr.ontimeout = () => reject(new Error('timeout'));
-      xhr.send(body);
-    });
-  }
-
-  async function aiMatch(qText, inputs) {
-    if (!CFG.aiEnable || !CFG.aiModel) return null;
-    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
-    if (!apiKey) return null;
-
-    // ① 请求去重缓存：同题只问一次（按模型缓存）
-    const cacheKey = CFG.aiModel + '|' + qText;
-    if (_aiCache.has(cacheKey)) {
-      CFG.debug && console.log('[AI Cache]', CFG.aiModel, qText.substring(0,30), '->', _aiCache.get(cacheKey));
-      return _aiCache.get(cacheKey);
-    }
-
-    const optTexts = inputs.map(i => {
-      const label = i.closest('label') || i.parentElement;
-      return label ? label.textContent.replace(/\s+/g,' ').trim() : (i.value || '');
-    });
-
-    const retry = 3;
-    for (let attempt = 0; attempt <= retry; attempt++) {
-      try {
-        const { url, headers, body } = buildAIPayload(qText, optTexts);
-        const resp = await doAIRequest(url, headers, body);
-        const { status, result } = parseAIResponse(resp);
-
-        if (result) {
-          _aiCache.set(cacheKey, result);
-          _aiFailCount = 0;
-          CFG.debug && console.log('[AI Match]', CFG.aiModel, qText.substring(0,30), '->', result);
-          return result;
-        }
-        if (status !== 200) {
-          const err = new Error('HTTP ' + status);
-          err.status = status;
-          throw err;
-        }
-        // status === 200 但没有解析到结果
-        _aiFailCount = 0;
-        return null;
-      } catch (e) {
-        if (e?.status === 401) {
-          uLog('🤖 AI Key 无效（401），已自动关闭 AI', 'err');
-          CFG.aiEnable = false; saveCFG();
-          return null;
-        }
-
-        if (e?.status === 429) {
-          _aiFailCount++;
-          if (attempt < retry) {
-            uLog('🤖 AI 频率限制（429），' + (1000 * Math.pow(2, attempt)) + 'ms 后重试', 'warn');
-            await sleep(1000 * Math.pow(2, attempt));
-            continue;
-          }
-          uLog('🤖 AI 频率限制（429），重试次数用尽', 'warn');
-          return null;
-        }
-
-        // 其他 HTTP 错误
-        _aiFailCount++;
-        if (attempt < retry) {
-          CFG.debug && console.warn('[AI Match] HTTP ' + e?.status + '，重试中...');
-          await sleep(1000 * (attempt + 1));
-          continue;
-        }
-        CFG.debug && console.warn('[AI Match] HTTP ' + e?.status + ':', e?.responseText?.substring(0,100));
-      }
-    }
-
-    // 连续失败达到阈值，自动禁用 AI
-    if (_aiFailCount >= AI_FAIL_THRESHOLD) {
-      uLog('🤖 AI 连续失败 ' + AI_FAIL_THRESHOLD + ' 次，已自动关闭 AI 开关', 'warn');
-      CFG.aiEnable = false; saveCFG();
-    }
-    return null;
-  }
-
-  /* =========================================================
-     多平台适配器（v4.8.0 Phase3 多平台扩展）
-     自动检测当前平台，返回平台专用选择器 + 答题逻辑
-  ========================================================= */
-  const PlatformAdapter = {
-    /** 检测当前平台 */
-    getPlatform() {
-      const host = location.hostname;
-      if (/minutestars/.test(host)) return 'minutestars';
-      if (/xuexiqiangguo/.test(host)) return 'xuexiqiangguo';
-      if (/chaoxing/.test(host)) return 'chaoxing';
-      if (/zhihuishu/.test(host)) return 'zhihuishu';
-      if (/zhidao/.test(host)) return 'zhidao';
-      return 'unknown';
-    },
-
-    /** 获取平台配置（选择器 + 特性） */
-    getConfig() {
-      const platform = this.getPlatform();
-      const cfg = {
-        minutestars: {
-          name: 'MinuteStars',
-          questionSel: '.question-text, .title, .q-title',
-          answerSel: 'input[type="radio"], input[type="checkbox"]',
-          submitSel: 'button:contains("提交"), button:contains("确定"), .submit-btn',
-          multiAnswer: true,
-        },
-        xuexiqiangguo: {
-          name: '学习强国',
-          questionSel: '.question, .title, .q-title, .problem',
-          answerSel: 'input[type="radio"], input[type="checkbox"]',
-          submitSel: 'button:contains("提交"), button:contains("下一题"), .btn-submit',
-          multiAnswer: false,
-        },
-        chaoxing: {
-          name: '超星泛雅',
-          questionSel: '.question-text, .title, .q-title, .timu',
-          answerSel: 'input[type="radio"], input[type="checkbox"]',
-          submitSel: 'button:contains("提交"), button:contains("保存"), .submit-btn',
-          multiAnswer: true,
-        },
-        zhihuishu: {
-          name: '智慧树',
-          questionSel: '.question, .title, .q-title, .timu-title',
-          answerSel: 'input[type="radio"], input[type="checkbox"]',
-          submitSel: 'button:contains("提交"), button:contains("下一页"), .submit-btn',
-          multiAnswer: false,
-        },
-        zhidao: {
-          name: '知到',
-          questionSel: '.question-text, .title, .q-title',
-          answerSel: 'input[type="radio"], input[type="checkbox"]',
-          submitSel: 'button:contains("提交"), button:contains("确定"), .submit-btn',
-          multiAnswer: false,
-        },
-      };
-      return cfg[platform] || null;
-    },
-
-    /** 获取当前题目文本（平台自适应） */
-    getQuestionText() {
-      const config = this.getConfig();
-      if (!config) return null;
-      const el = document.querySelector(config.questionSel);
-      return el ? el.textContent.trim() : null;
-    },
-
-    /** 获取当前答案输入框（平台自适应） */
-    getAnswerInputs() {
-      const config = this.getConfig();
-      if (!config) return [];
-      return [...document.querySelectorAll(config.answerSel)];
-    },
-  };
-
-  /* =========================================================
-     AI 答案验证 + 错题分析（v4.8.0 Phase3）
-     - aiValidateAnswer：用 AI 验证题库答案是否正确
-     - aiAnalyzeWrongAnswer：分析错题原因并给出学习建议
-  ========================================================= */
-  async function aiValidateAnswer(question, answer, inputs) {
-    if (!CFG.aiEnable || !CFG.aiModel) return null;
-    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
-    if (!apiKey) return null;
-
-    const optTexts = inputs.map(i => {
-      const label = i.closest('label') || i.parentElement;
-      return label ? label.textContent.replace(/\s+/g, ' ').trim() : (i.value || '');
-    });
-    const prompt = `请验证以下题目的正确答案是否正确：
-
-题目：${question}
-选项：${optTexts.map((t,i) => String.fromCharCode(65+i) + '. ' + t).join(' | ')}
-题库答案：${answer}
-
-请判断题库答案是否正确。如果正确回复"正确"，如果错误回复"错误：正确答案应为 X"，其中 X 是正确选项字母。`;
-
-    try {
-      const resp = await aiMatch(question, inputs); // 复用 aiMatch 的 AI 请求逻辑
-      if (!resp) {
-        // 直接调用 AI API
-        const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
-        const modelName = modelCfg.model || '';
-        const requestBody = JSON.stringify({
-          model: modelName,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 64,
-          temperature: 0.1,
-        });
-        const data = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', endpoint, true);
-          xhr.setRequestHeader('Content-Type', 'application/json');
-          xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
-          xhr.timeout = 15000;
-          xhr.onload = () => resolve(JSON.parse(xhr.responseText));
-          xhr.onerror = () => reject(new Error('网络错误'));
-          xhr.ontimeout = () => reject(new Error('超时'));
-          xhr.send(requestBody);
-        });
-        const content = (data.choices?.[0]?.message?.content || '').trim();
-        return content.includes('正确') ? { valid: true, message: content } : { valid: false, message: content };
-      }
-      return { valid: true, message: 'AI 已匹配答案 ' + resp };
-    } catch (e) {
-      uLog('🤖 AI 验证失败: ' + e.message, 'warn');
-      return null;
-    }
-  }
-
-  async function aiAnalyzeWrongAnswer(question, userAnswer, correctAnswer) {
-    if (!CFG.aiEnable || !CFG.aiModel) return null;
-    const modelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-    const apiKey = modelCfg.apiKey || CFG.aiApiKey;
-    if (!apiKey) return null;
-
-    const prompt = `请分析这道错题：
-
-题目：${question}
-我的答案：${userAnswer || '未作答'}
-正确答案：${correctAnswer}
-
-请简要分析：
-1. 我为什么答错了？
-2. 正确的解题思路是什么？
-3. 相关知识点有哪些？
-4. 如何避免再犯类似错误？
-
-请用简洁的中文回答，每个问题不超过 50 字。`;
-
-    try {
-      const endpoint = modelCfg.endpoint || CFG.aiEndpoint;
-      const modelName = modelCfg.model || '';
-      const requestBody = JSON.stringify({
-        model: modelName,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 256,
-        temperature: 0.3,
-      });
-      const data = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', endpoint, true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('Authorization', 'Bearer ' + apiKey);
-        xhr.timeout = 20000;
-        xhr.onload = () => resolve(JSON.parse(xhr.responseText));
-        xhr.onerror = () => reject(new Error('网络错误'));
-        xhr.ontimeout = () => reject(new Error('超时'));
-        xhr.send(requestBody);
-      });
-      const content = (data.choices?.[0]?.message?.content || '').trim();
-      return content;
-    } catch (e) {
-      uLog('🤖 AI 分析失败: ' + e.message, 'warn');
-      return null;
-    }
-  }
 
   /* =========================================================
       Gitee 仓库文件云同步（v4.8.51 从 Gist 迁移）
@@ -1834,7 +1509,6 @@
     .ata-method-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
     .ata-method-dot.library{background:var(--nm-accent)}
     .ata-method-dot.rule{background:var(--nm-warning)}
-    .ata-method-dot.ai{background:#8b5cf6}
 
     /* 最近答题记录 */
     .ata-recent-wrap{padding:0 14px 8px}
@@ -2169,7 +1843,6 @@
     .ata-method-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle;}
     .ata-method-dot.library{background:#5a8dee;}
     .ata-method-dot.rule{background:#fbbf24;}
-    .ata-method-dot.ai{background:#48bb78;}
     .ata-method-dot.none{background:#94a3b8;}
 
     /* 题库管理弹窗（居中浮窗） */
@@ -2462,7 +2135,6 @@
       <div class="ata-hitrate-detail" id="ata-hitrate-detail">
         <span class="ata-method-dot library" title="题库命中"></span><span id="ata-stat-lib">0</span>
         <span class="ata-method-dot rule" title="规则推断"></span><span id="ata-stat-rule">0</span>
-        <span class="ata-method-dot ai" title="AI匹配"></span><span id="ata-stat-ai">0</span>
       </div>
     </div>
 
@@ -2598,30 +2270,17 @@
         <label class="ata-toggle"><input type="checkbox" id="cfg-notify-enable"><span class="ata-slider"></span></label>
       </div>
 
-      <div class="ata-section-title">AI 辅助 <span style="font-size:10px;color:#aaa">(题库无命中时语义兜底)</span></div>
       <div class="ata-row">
-        <span class="ata-label">启用 AI 匹配</span>
-        <label class="ata-toggle"><input type="checkbox" id="cfg-ai-enable"><span class="ata-slider"></span></label>
       </div>
-      <div id="cfg-ai-row" style="opacity:.4">
         <div class="ata-row">
           <span class="ata-label">AI 模型</span>
-          <select id="cfg-ai-model" class="ata-text-input" style="width:auto;font-size:12px">
-            <option value="deepseek">DeepSeek（硅基流动）</option>
-            <option value="openai">OpenAI（GPT-4o）</option>
-            <option value="claude">Claude（Anthropic）</option>
-            <option value="gemini">Gemini（Google）</option>
           </select>
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-          <span class="ata-label">API Key</span>
-          <input type="password" id="cfg-ai-api-key" class="ata-text-input" placeholder="sk-... (硅基流动 / DeepSeek)">
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">API 地址</span>
-          <input type="text" id="cfg-ai-endpoint" class="ata-text-input" placeholder="https://..." style="width:100%;box-sizing:border-box;font-size:11px">
         </div>
-        <div style="font-size:10px;color:#888;margin-top:4px">💡 推荐使用 <b>硅基流动</b>（免费额度），或自备 DeepSeek Key</div>
       </div>
 
       <div class="ata-section-title">云同步 <span style="font-size:10px;color:#aaa">(Gitee 仓库)</span></div>
@@ -4988,7 +4647,7 @@
     startTick();
   }
 
-  function updateStatsCards({ ok, infer, skip, i, total, libCnt, ruleCnt, aiCnt }) {
+  function updateStatsCards({ ok, infer, skip, i, total, libCnt, ruleCnt }) {
     const pct = Math.round((i + 1) / total * 100);
     setProgress(i + 1, total);
     const statAns = $c('#ata-stat-answered');
@@ -4997,14 +4656,12 @@
     if (statAns)  statAns.textContent  = i + 1;
     if (statHit)  statHit.textContent   = ok + infer;
     if (statMiss) statMiss.textContent  = skip;
-    updateHitRate({ answered: i + 1, hit: ok + infer, lib: libCnt, rule: ruleCnt, ai: aiCnt });
     return pct;
   }
 
   /* ---- 提取：题目遍历与答题核心逻辑 ---- */
   async function processQuestions(containers, seenQ) {
     let ok = 0, skip = 0, infer = 0;
-    let libCnt = 0, ruleCnt = 0, aiCnt = 0;
     _speedTimes = [];
     let _speedStart = Date.now();
     const speedWrap = document.getElementById('ata-speed-wrap');
@@ -5040,14 +4697,10 @@
           c.classList.add('ata-answered');
           uLog('🔎 规则推断 ' + txt.substring(0, 30) + '… → ' + ruleAns, 'info');
           infer++;
-        } else if (CFG.aiEnable && CFG.aiApiKey) {
-          const aiAns = await aiMatch(txt, inputs);
           if (aiAns) {
             matchedAnswer = aiAns; matchMethod = 'ai';
-            aiCnt++;
             await fill(c, aiAns);
             c.classList.add('ata-answered');
-            uLog('🤖 AI匹配 ' + txt.substring(0, 30) + '… → ' + aiAns, 'info');
             ok++;
           } else {
             c.classList.add('ata-no-match');
@@ -5066,7 +4719,6 @@
       }
       addRecentLog(txt, matchedAnswer, matchMethod);
       updateAccuracyHistory(matchedAnswer !== null);
-      const pct = updateStatsCards({ ok, infer, skip, i, total: containers.length, libCnt, ruleCnt, aiCnt });
       const elapsed = Date.now() - _speedStart;
       _speedTimes.push(elapsed);
       if (_speedTimes.length > 200) _speedTimes = _speedTimes.slice(-200);
@@ -5080,7 +4732,6 @@
       if (!running) break;
       await sleep(CFG.answerDelay + Math.random() * 200);
     }
-    return { ok, infer, skip, libCnt, ruleCnt, aiCnt };
   }
 
   async function runAutoAnswer() {
@@ -5108,7 +4759,6 @@
 
       setProgress(0, containers.length);
       const seenQ = new Set();
-      const { ok, infer, skip, libCnt, ruleCnt, aiCnt } = await processQuestions(containers, seenQ);
 
 
       uLog('完成！命中 ' + ok + '，推断 ' + infer + '，跳过 ' + skip, 'ok');
@@ -5178,13 +4828,7 @@
     // v4.5.39 新增
     setChk('cfg-shortcuts-enable',  CFG.shortcutsEnable);
     setChk('cfg-notify-enable',     CFG.notifyEnable);
-    setChk('cfg-ai-enable',         CFG.aiEnable);
-    setVal('cfg-ai-model',        CFG.aiModel || 'deepseek');
     // 根据当前模型加载对应配置
-    const curModelCfg = CFG.aiModels?.[CFG.aiModel] || {};
-    setVal('cfg-ai-api-key',      curModelCfg.apiKey || CFG.aiApiKey);
-    setVal('cfg-ai-endpoint',     curModelCfg.endpoint || CFG.aiEndpoint);
-    setVal('cfg-ai-endpoint',     CFG.aiEndpoint);
     setChk('cfg-cloud-sync-enable', CFG.cloudSyncEnable);
     setVal('cfg-cloud-file-path',  CFG.cloudFilePath);
     setVal('cfg-cloud-token',       CFG.cloudToken);
@@ -5193,8 +4837,6 @@
     const preview = ge('cfg-share-preview');
     if (preview) preview.textContent = CFG.cloudFilePath || 'tiku.json';
     // 联动显示
-    const aiRow = ge('cfg-ai-row');
-    if (aiRow) aiRow.style.opacity = CFG.aiEnable ? '1' : '.4';
     const cloudRow = ge('cfg-cloud-row');
     if (cloudRow) cloudRow.style.opacity = CFG.cloudSyncEnable ? '1' : '.4';
 
@@ -5248,16 +4890,8 @@
     // v4.5.39 新增
     CFG.shortcutsEnable = gChk('cfg-shortcuts-enable');
     CFG.notifyEnable    = gChk('cfg-notify-enable');
-    CFG.aiEnable        = gChk('cfg-ai-enable');
-    CFG.aiModel         = gVal('cfg-ai-model') || 'deepseek';
     // 保存每模型配置
-    if (!CFG.aiModels) CFG.aiModels = {};
-    if (!CFG.aiModels[CFG.aiModel]) CFG.aiModels[CFG.aiModel] = {};
-    CFG.aiModels[CFG.aiModel].apiKey = gVal('cfg-ai-api-key').trim();
-    CFG.aiModels[CFG.aiModel].endpoint = gVal('cfg-ai-endpoint').trim();
     // 同时更新全局（向后兼容）
-    CFG.aiApiKey   = CFG.aiModels[CFG.aiModel].apiKey;
-    CFG.aiEndpoint = CFG.aiModels[CFG.aiModel].endpoint || 'https://api.siliconflow.cn/v1/chat/completions';
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
     CFG.cloudFilePath    = gVal('cfg-cloud-file-path').trim() || 'tiku.json';
     CFG.cloudToken       = gVal('cfg-cloud-token').trim();
@@ -5321,7 +4955,7 @@
   let _recentLogs = []; // 当前试卷全部答题记录
 
   /** 更新命中率显示 */
-  function updateHitRate({ answered, hit, lib, rule, ai }) {
+  function updateHitRate({ answered, hit, lib, rule }) {
     const pct = answered > 0 ? Math.round(hit / answered * 100) : 0;
     const fill = document.getElementById('ata-hitrate-fill');
     const pctEl = document.getElementById('ata-stat-hitrate');
@@ -5329,7 +4963,6 @@
     if (pctEl) pctEl.textContent = pct + '%';
     document.getElementById('ata-stat-lib')?.textContent && (document.getElementById('ata-stat-lib').textContent = lib);
     document.getElementById('ata-stat-rule')?.textContent && (document.getElementById('ata-stat-rule').textContent = rule);
-    document.getElementById('ata-stat-ai')?.textContent && (document.getElementById('ata-stat-ai').textContent = ai);
   }
 
   /** 添加答题记录 */
@@ -5350,7 +4983,6 @@
     }
     list.innerHTML = _recentLogs.map((log, i) => `
       <div class="ata-recent-item" data-idx="${i}">
-        <span class="ata-method-dot ${log.method}" title="${log.method === 'library' ? '题库命中' : log.method === 'rule' ? '规则推断' : log.method === 'ai' ? 'AI匹配' : '未匹配'}"></span>
         <span class="ata-recent-q" title="${escHtml(log.q)}">${escHtml(log.q)}</span>
         <span class="ata-recent-ans">${log.a}</span>
       </div>
@@ -5367,7 +4999,6 @@
         <div class="ata-detail-body">
           <div class="ata-detail-row"><label>题目</label><div class="ata-detail-val">${escHtml(log.q)}</div></div>
           <div class="ata-detail-row"><label>答案</label><div class="ata-detail-val" style="color:var(--nm-success);font-weight:700">${escHtml(log.a)}</div></div>
-          <div class="ata-detail-row"><label>匹配方式</label><div class="ata-detail-val"><span class="ata-recent-method ${log.method}">${log.method === 'library' ? '题库命中' : log.method === 'rule' ? '规则推断' : log.method === 'ai' ? 'AI匹配' : '未匹配'}</span></div></div>
         </div>
       </div>
     `;
@@ -5442,30 +5073,6 @@
     if (fields) fields.style.opacity = this.checked ? '1' : '.4';
   });
 
-  // v4.5.39 AI 开关 → 配置区可用状态
-  document.getElementById('cfg-ai-enable')?.addEventListener('change', function () {
-    const row = document.getElementById('cfg-ai-row');
-    if (row) row.style.opacity = this.checked ? '1' : '.4';
-  });
-
-  // v4.8.0 模型选择切换 → 加载对应模型配置
-  document.getElementById('cfg-ai-model')?.addEventListener('change', function () {
-    const model = this.value;
-    const modelCfg = CFG.aiModels?.[model] || {};
-    const keyInput = document.getElementById('cfg-ai-api-key');
-    const epInput  = document.getElementById('cfg-ai-endpoint');
-    if (keyInput) keyInput.value = modelCfg.apiKey || '';
-    if (epInput)  epInput.value  = modelCfg.endpoint || '';
-    // 更新提示文本
-    const hints = {
-      deepseek: '💡 推荐使用 <b>硅基流动</b>（免费额度），或自备 DeepSeek Key',
-      openai:   '💡 使用 OpenAI API Key（sk-...），Endpoint 默认 api.openai.com',
-      claude:   '💡 使用 Anthropic API Key（sk-ant-...），Endpoint 默认 api.anthropic.com',
-      gemini:   '💡 使用 Google Gemini API Key，Endpoint 固定为 generativelanguage.googleapis.com',
-    };
-    const hintEl = document.querySelector('#cfg-ai-row > div:last-child');
-    if (hintEl) hintEl.innerHTML = hints[model] || hints.deepseek;
-  });
 
   // v4.5.39 云同步开关 → 配置区可用状态
   document.getElementById('cfg-cloud-sync-enable')?.addEventListener('change', function () {
@@ -5565,9 +5172,6 @@
   ========================================================= */
   const PRESETS_KEY = 'ata_presets';
   const PRESET_DEFS = {
-    fast:     { name: '⚡ 快速答题', fuzzyEnable: true, fuzzyThresh: 0.65, answerDelay: 50,  autoLogin: false, aiEnable: false, hint: '低延迟，题库优先，适合简单考试' },
-    accurate: { name: '🎯 精准答题', fuzzyEnable: true, fuzzyThresh: 0.85, answerDelay: 150, autoLogin: false, aiEnable: false, hint: '高阈值，降低误匹配' },
-    safe:     { name: '🛡️ 安全答题', fuzzyEnable: true, fuzzyThresh: 0.75, answerDelay: 300, autoLogin: true,  aiEnable: true,  hint: '长延迟+AI兜底，适合严格考试' },
   };
   let _userPresets = {};
 
@@ -5584,7 +5188,6 @@
     CFG.fuzzyThresh = p.fuzzyThresh;
     CFG.answerDelay = p.answerDelay;
     CFG.autoLogin = p.autoLogin;
-    CFG.aiEnable = p.aiEnable;
     syncSettingsUI();
     const hint = document.getElementById('ata-presets-hint');
     if (hint) hint.textContent = '已应用：' + p.name + ' — ' + p.hint;
@@ -5620,7 +5223,6 @@
       fuzzyThresh: CFG.fuzzyThresh,
       answerDelay: CFG.answerDelay,
       autoLogin: CFG.autoLogin,
-      aiEnable: CFG.aiEnable,
       hint: '自定义预设',
     };
     // 更新下拉框
@@ -5729,11 +5331,8 @@
       downloadFile(JSON.stringify(all, null, 2), 'MinuteStars题库_' + Date.now() + '.json', 'application/json');
       uLog('📤 题库已导出 (Alt+D)', 'ok');
     }
-    // Ctrl+Shift+A → AI 匹配测试（仅在控制台）
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      CFG.aiEnable = !CFG.aiEnable;
-      uLog('AI 辅助: ' + (CFG.aiEnable ? '开启' : '关闭'), 'info');
     }
   });
 
