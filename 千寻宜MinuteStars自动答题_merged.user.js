@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.44
+// @version      4.8.45
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3717,13 +3717,25 @@
             debugLog('DEBUG', 'STATE_MACHINE', '跳过分类标题', trimmed);
             continue;
           }
+          // 跳过答案行（没有题干的孤立答案行）
+          if (isAnswerLine(line)) {
+            debugLog('DEBUG', 'STATE_MACHINE', '跳过孤立答案行', trimmed);
+            continue;
+          }
           
-          // 找到题目开始
+          // 找到题目开始（带题号）
           if (isQuestionStart(line)) {
             currentQALines = [line];
             currentAnswer = null;
             state = State.COLLECTING_QUESTION;
-            debugLog('DEBUG', 'STATE_MACHINE', '进入 COLLECTING_QUESTION', trimmed.substring(0, 50));
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 COLLECTING_QUESTION（带题号）', trimmed.substring(0, 50));
+          }
+          // 无题号的题干（非空、非选项、非答案、非解析、非分类标题）→ 也当作题干开始
+          else if (trimmed.length >= 4 && !isOption(line) && !isAnalysisLine(line)) {
+            currentQALines = [line];
+            currentAnswer = null;
+            state = State.COLLECTING_QUESTION;
+            debugLog('DEBUG', 'STATE_MACHINE', '进入 COLLECTING_QUESTION（无题号）', trimmed.substring(0, 50));
           }
           break;
           
@@ -3795,7 +3807,7 @@
             state = State.FOUND_ANALYSIS;
             debugLog('DEBUG', 'STATE_MACHINE', '进入 FOUND_ANALYSIS', trimmed);
           }
-          // 遇到下一题或分类标题 → 保存当前题
+          // 遇到下一题（带题号）或分类标题 → 保存当前题
           else if (isQuestionStart(line) || isCategoryTitle(line)) {
             // 保存当前题
             if (currentAnswer) {
@@ -3824,17 +3836,47 @@
               currentQALines = [line];
               currentAnswer = null;
               state = State.COLLECTING_QUESTION;
-              debugLog('DEBUG', 'STATE_MACHINE', '开始新题', trimmed.substring(0, 50));
+              debugLog('DEBUG', 'STATE_MACHINE', '开始新题（带题号）', trimmed.substring(0, 50));
             } else {
               currentQALines = [];
               currentAnswer = null;
               state = State.LOOKING_FOR_QUESTION;
             }
           }
+          // 遇到无题号的题干（非答案、非解析、非选项、非空）→ 保存当前题并开始新题
+          else if (trimmed.length >= 4 && !isAnswerLine(line) && !isOption(line) && !isEmpty(line)) {
+            // 保存当前题
+            if (currentAnswer) {
+              const fullText = currentQALines.join('\n');
+              const qText = cleanQuestionText(fullText);
+              
+              if (qText.length >= 4) {
+                const normalizedAnswer = normalizeAnswer(currentAnswer);
+                
+                if (db.hasOwnProperty(qText)) {
+                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
+                  skipped++;
+                } else {
+                  db[qText] = normalizedAnswer;
+                  added++;
+                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
+                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                }
+              } else {
+                skipped++;
+              }
+            }
+            
+            // 开始新题（无题号）
+            currentQALines = [line];
+            currentAnswer = null;
+            state = State.COLLECTING_QUESTION;
+            debugLog('DEBUG', 'STATE_MACHINE', '开始新题（无题号）', trimmed.substring(0, 50));
+          }
           break;
           
         case State.FOUND_ANALYSIS:
-          // 遇到下一题或分类标题 → 保存当前题
+          // 遇到下一题（带题号）或分类标题 → 保存当前题
           if (isQuestionStart(line) || isCategoryTitle(line)) {
             // 保存当前题
             if (currentAnswer) {
@@ -3869,6 +3911,36 @@
               currentAnswer = null;
               state = State.LOOKING_FOR_QUESTION;
             }
+          }
+          // 遇到无题号的题干 → 保存当前题并开始新题
+          else if (trimmed.length >= 4 && !isAnswerLine(line) && !isOption(line) && !isEmpty(line)) {
+            // 保存当前题
+            if (currentAnswer) {
+              const fullText = currentQALines.join('\n');
+              const qText = cleanQuestionText(fullText);
+              
+              if (qText.length >= 4) {
+                const normalizedAnswer = normalizeAnswer(currentAnswer);
+                
+                if (db.hasOwnProperty(qText)) {
+                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
+                  skipped++;
+                } else {
+                  db[qText] = normalizedAnswer;
+                  added++;
+                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
+                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                }
+              } else {
+                skipped++;
+              }
+            }
+            
+            // 开始新题（无题号）
+            currentQALines = [line];
+            currentAnswer = null;
+            state = State.COLLECTING_QUESTION;
+            debugLog('DEBUG', 'STATE_MACHINE', '开始新题（无题号，从解析后）', trimmed.substring(0, 50));
           }
           // 其他行 → 忽略（解析行后面的内容）
           else {
