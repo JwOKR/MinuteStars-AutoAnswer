@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.16
+// @version      4.9.17
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1183,7 +1183,11 @@
         const apiUrl = repoApiUrl(filePath) + '?access_token=' + CFG.cloudToken;
         const resp = await _cloudReq('GET', apiUrl);
         const data = JSON.parse(resp);
-        if (data.content) return atob(data.content.replace(/\n/g, ''));
+        if (data.content) {
+          // 正确解码 UTF-8 Base64 内容（atob 无法直接处理中文）
+          const rawBytes = Uint8Array.from(atob(data.content.replace(/\n/g, '')), c => c.charCodeAt(0));
+          return new TextDecoder('utf-8').decode(rawBytes);
+        }
         throw new Error('仓库文件为空');
       } catch (apiErr) {
         const msg = apiErr.message || '';
@@ -1209,7 +1213,7 @@
     } catch { /* 文件不存在，创建新文件 */ }
 
     const payload = JSON.stringify({
-      content: btoa(unescape(encodeURIComponent(content))),
+      content: btoa(String.fromCharCode(...new TextEncoder().encode(content))),
       message: message,
       branch: CFG.cloudBranch,
       ...(sha ? { sha } : {}),

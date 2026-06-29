@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.17
+### 🐛 修复
+- **题库上传后变成乱码**：`_writeRepoFile` 旧式 `btoa(unescape(encodeURIComponent(...)))` 编码和 `_readRepoFile` API 回退路径 `atob()` 解码均无法正确处理 UTF-8 中文。改用 `TextEncoder`/`TextDecoder` 标准 API
+
 ## v4.9.16
 ### 🐛 修复
 - **匹配不到答案**：`rebuildCache()` 的 `_rebuilding` 锁从未释放，导致第一次调用后所有后续缓存重建被跳过，`getMergedCache()` 返回空/旧数据 -> 所有题目匹配失败
