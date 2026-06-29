@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.31
+### 🔧 变更
+- **拦截页面 5 秒自动提交** — 注入 `window.setTimeout` 拦截器，将延迟 4-6s 的提交类定时器延长至 60s
+- **提交延迟默认缩短** — `submitDelayMin/Max` 从 20~30s 改为 1~3s，避免与页面自身提交冲突
+
 ## v4.9.30
 ### 🔧 变更
 - **加密上传默认开启** — `cloudEncrypt` 默认值 `false` → `true`

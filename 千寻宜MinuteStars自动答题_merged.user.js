@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.30
+// @version      4.9.31
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -123,8 +123,8 @@
     autoLogin:   false,
     autoAnswer:  true,   // 加载后自动答题
     autoSubmit:  true,   // 答完自动提交
-    submitDelayMin: 20,
-    submitDelayMax: 30,
+    submitDelayMin: 1,
+    submitDelayMax: 3,
     answerDelay: 120,
     fuzzyEnable: false,
     fuzzyThresh: 0.75,
@@ -5723,9 +5723,26 @@
       try { return new URL(d).hostname === currentHost; } catch { return false; }
     });
     if (!isMinuteStars && !isCustom) {
-      uLog('⚠ 当前域名不在允许列表中（' + currentHost + '），脚本不运行', 'warn');
+      // 此时 uLog 不可用（面板未渲染），静默跳过
       return;
     }
+
+    // v4.9.31 拦截页面 5 秒自动提交：接管 window.setTimeout，将 4-6s 延迟的定时器延长为 60s
+    (function _patchPageTimer() {
+      const _orig = window.setTimeout.bind(window);
+      window.setTimeout = function (fn, delay, ...args) {
+        if (typeof delay === 'number' && delay >= 4000 && delay <= 6000) {
+          try {
+            const code = String(fn);
+            if (/(submit|交卷|提交|location\s*=|top\.|self\.close|window\.close)/i.test(code)) {
+              console.log('[ATA Pro] 🔧 已拦截页面自动提交定时器（原 ' + delay + 'ms → 延长至 60s）');
+              return _orig(fn, 60000, ...args);
+            }
+          } catch (_) { /* 无法序列化函数则放行 */ }
+        }
+        return _orig(fn, delay, ...args);
+      };
+    })();
 
     _cache.dirty = true;
     refreshLibCount();
