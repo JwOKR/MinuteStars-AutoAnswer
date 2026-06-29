@@ -3226,7 +3226,10 @@
     void el.offsetWidth;
     el.innerHTML = msg;
     el.style.color = ok ? '#66bb6a' : '#ef5350';
-    setTimeout(() => { el.innerHTML = ''; }, 6000);
+    // 包含交互按钮时不自动关闭
+    if (!msg.includes('<button')) {
+      setTimeout(() => { el.innerHTML = ''; }, 6000);
+    }
   }
 
   /**
