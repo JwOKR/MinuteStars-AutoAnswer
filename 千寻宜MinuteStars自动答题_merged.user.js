@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.50
+// @version      4.8.51
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -145,7 +145,10 @@
     },
     cloudSyncEnable:  true,   // 云同步开关（默认打开）
     cloudReadMode:    'cloud', // 'local'=本地存储答题（需下载），'cloud'=直读云端答题（不落地）
-    cloudGistId:      '',     // Gist ID
+    cloudRepoPath:    'law-of-order/MinuteStars-AutoAnswer', // 仓库路径（owner/repo）
+    cloudFilePath:    'tiku.json',       // 题库文件路径
+    cloudBranch:      'main',            // 分支名
+    cloudGistId:      '',     // [已废弃] 旧 Gist ID（用于迁移）
     cloudToken:       '',     // Gitee 私人令牌
     customDomains:    [],    // 自定义匹配域名（运行时生效）
   };
@@ -734,17 +737,14 @@
   let _cloudCacheTime = 0;
   const _CLOUD_CACHE_TTL = 5 * 60 * 1000; // 5 分钟 TTL，过期则重新拉取
 
-  /** 直读云端：从 Gist 拉取题库到内存（不落地本地） */
+  /** 直读云端：从仓库拉取题库到内存（不落地本地） */
   async function fetchCloudDB() {
     const now = Date.now();
     if (_cloudCache && (now - _cloudCacheTime) < _CLOUD_CACHE_TTL) return _cloudCache;
-    if (!CFG.cloudSyncEnable || !CFG.cloudGistId) return null;
+    if (!CFG.cloudSyncEnable) return null;
     try {
-      const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
-      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
-      const file = data.files?.['minutestars_qa.json'];
-      if (!file) return null;
-      _cloudCache = JSON.parse(file.content);
+      const raw = await _readRepoFile(CFG.cloudFilePath);
+      _cloudCache = JSON.parse(raw);
       _cloudCacheTime = now;
       uLog('☁ 云端题库已加载（' + Object.keys(_cloudCache).length + ' 条，有效期 5 分钟）', 'ok');
       // 立即重建缓存，使云端题目生效
@@ -1465,88 +1465,93 @@
   }
 
   /* =========================================================
-      GitHub Gist 云同步
-     ⚡ v4.5.39：题库上传下载到 GitHub Gist
+      Gitee 仓库文件云同步（v4.8.51 从 Gist 迁移）
+     ⚡ 公开可分享、国内网络快、读免认证
   ========================================================= */
-  function gistUrl(id) {
-    const token = CFG.cloudToken;
-    const param = token ? '?access_token=' + token : '';
-    return 'https://gitee.com/api/v5/gists/' + (id || '') + param;
+
+  /** 构建 Gitee 仓库 Raw URL（公开访问，免认证） */
+  function repoRawUrl(filePath) {
+    return `https://gitee.com/${CFG.cloudRepoPath}/raw/${CFG.cloudBranch}/${filePath}`;
   }
 
-  /** 验证 Gist ID 是否有效 */
-  async function _validateGistId(gistId) {
-    if (!gistId) return false;
+  /** 构建 Gitee 仓库 API URL（读/写需要 Token） */
+  function repoApiUrl(filePath) {
+    return `https://gitee.com/api/v5/repos/${CFG.cloudRepoPath}/contents/${encodeURIComponent(filePath)}`;
+  }
+
+  /** 读取仓库文件内容（优先免认证 raw 链接，回退 API） */
+  async function _readRepoFile(filePath) {
+    const rawUrl = repoRawUrl(filePath);
+    uLog('📡 读取仓库文件: ' + rawUrl, 'info');
+    // 先尝试免认证 raw 链接
     try {
-      await _gistReq('GET', gistUrl(gistId), null);
-      return true;
+      return await _cloudReq('GET', rawUrl);
     } catch {
-      return false;
+      uLog('⚠️ raw 链接失败，尝试 API 读取', 'warn');
+      // 回退到 API（需要 Token）
+      const apiUrl = repoApiUrl(filePath) + '?access_token=' + CFG.cloudToken;
+      const resp = await _cloudReq('GET', apiUrl);
+      const data = JSON.parse(resp);
+      if (data.content) return atob(data.content.replace(/\n/g, ''));
+      throw new Error('仓库文件为空');
     }
   }
 
-  /** 上传题库到 Gist（合并去重：本地题库优先，云端兜底） */
+  /** 写入仓库文件（始终需要 Token） */
+  async function _writeRepoFile(filePath, content, message) {
+    const apiUrl = repoApiUrl(filePath);
+    // 先获取现有文件的 sha（用于更新）
+    let sha = '';
+    try {
+      const apiGetUrl = apiUrl + '?access_token=' + CFG.cloudToken;
+      const resp = await _cloudReq('GET', apiGetUrl);
+      const data = JSON.parse(resp);
+      sha = data.sha || '';
+    } catch { /* 文件不存在，创建新文件 */ }
+
+    const payload = JSON.stringify({
+      access_token: CFG.cloudToken,
+      content: btoa(unescape(encodeURIComponent(content))),
+      message: message,
+      branch: CFG.cloudBranch,
+      ...(sha ? { sha } : {}),
+    });
+    uLog('📤 写入仓库文件: ' + filePath + (sha ? ' (更新)' : ' (新建)'), 'info');
+    return _cloudReq('PUT', apiUrl, payload);
+  }
+
+  /** 上传题库到仓库文件（合并去重：本地题库优先，云端兜底） */
   async function cloudUpload() {
     if (!CFG.cloudSyncEnable || !CFG.cloudToken) {
       uLog('⚠️ 请先在设置中填写 Token 并开启云同步', 'warn'); return false;
     }
-    uLog('⬆️ 正在上传题库（合并去重）…', 'info');
+    uLog('⬆️ 正在上传题库到仓库（合并去重）…', 'info');
     try {
-      let isUpdate = false;
-      if (CFG.cloudGistId) {
-        uLog('🔍 验证 Gist ID…', 'info');
-        isUpdate = await _validateGistId(CFG.cloudGistId);
-        if (!isUpdate) {
-          uLog('⚠️ Gist ID 无效，将创建新 Gist', 'warn');
-          CFG.cloudGistId = '';
-          saveCFG();
-        }
-      }
-      // ── 合并去重：本地题库优先 ──
       const localDB = LibraryManager.load();
       let cloudDB = {};
       let cloudCount = 0;
-      if (isUpdate) {
-        try {
-          const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
-          const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
-          const file = data.files?.['minutestars_qa.json'];
-          if (file) {
-            cloudDB = JSON.parse(file.content);
-            cloudCount = Object.keys(cloudDB).length;
-          }
-        } catch (e) {
-          uLog('⚠️ 获取云端题库失败，将以本地题库创建新 Gist: ' + e.message, 'warn');
-          isUpdate = false;
-        }
-      }
-      // 合并：云端题库 + 本地题库（本地优先，云端作为补充）
-      const merged = { ...cloudDB, ...localDB };
-      const localOnly = Object.keys(localDB).length;
-      const cloudOnly = cloudCount - Object.keys({ ...localDB, ...cloudDB }).length + Object.keys(localDB).length - localOnly;
-      // 实际新增：merged 有多少条是来自云端的（local没有的）
-      const cloudNewCount = Object.keys(merged).filter(k => !localDB.hasOwnProperty(k)).length;
-      uLog('📊 云端 ' + cloudCount + ' 条 + 本地 ' + localOnly + ' 条 = 合并 ' + Object.keys(merged).length + ' 条', 'info');
 
-      const method = isUpdate ? 'PATCH' : 'POST';
-      const payload = JSON.stringify({
-        access_token: CFG.cloudToken,
-        description: 'MinuteStars 答题器题库备份 ' + new Date().toLocaleString(),
-        public: false,
-        files: {
-          'minutestars_qa.json': { content: JSON.stringify(merged, null, 2) },
-        },
-      });
-      const resp = await _gistReq(method, gistUrl(CFG.cloudGistId), payload);
-      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
-      const gistId = data.id;
-      if (!CFG.cloudGistId) {
-        CFG.cloudGistId = gistId;
-        saveCFG();
-        uLog('✅ 首次上传成功！Gist ID 已保存。ID: ' + gistId, 'ok');
-      } else {
-        uLog('✅ 合并上传成功！共 ' + Object.keys(merged).length + ' 条（本地新增 ' + localOnly + ' 条，云端补充 ' + cloudNewCount + ' 条）', 'ok');
+      // 尝试读取云端已有题库
+      try {
+        const cloudRaw = await _readRepoFile(CFG.cloudFilePath);
+        cloudDB = JSON.parse(cloudRaw);
+        cloudCount = Object.keys(cloudDB).length;
+        uLog('📊 云端有 ' + cloudCount + ' 条', 'info');
+      } catch {
+        uLog('📊 云端无题库，将创建新文件', 'info');
       }
+
+      // 合并：本地优先，云端补充
+      const merged = { ...cloudDB, ...localDB };
+      const cloudNewCount = Object.keys(merged).filter(k => !localDB.hasOwnProperty(k)).length;
+      uLog('📊 云端 ' + cloudCount + ' 条 + 本地 ' + Object.keys(localDB).length + ' 条 = 合并 ' + Object.keys(merged).length + ' 条', 'info');
+
+      const content = JSON.stringify(merged, null, 2);
+      await _writeRepoFile(CFG.cloudFilePath, content,
+        'MinuteStars 题库备份 ' + new Date().toLocaleString());
+
+      uLog('✅ 合并上传成功！共 ' + Object.keys(merged).length + ' 条（云端补充 ' + cloudNewCount + ' 条）', 'ok');
+      uLog('📤 公开分享链接：<a href="' + repoRawUrl(CFG.cloudFilePath) + '" target="_blank">' + repoRawUrl(CFG.cloudFilePath) + '</a>', 'info');
       gmNotify('云同步', '题库上传成功！共 ' + Object.keys(merged).length + ' 条');
       return true;
     } catch (e) {
@@ -1555,27 +1560,21 @@
     }
   }
 
-  /** 从 Gist 下载题库（覆盖本地：云端为唯一权威来源） */
+  /** 从仓库下载题库（覆盖本地：云端为唯一权威来源） */
   async function cloudDownload() {
-    if (!CFG.cloudSyncEnable || !CFG.cloudGistId) {
-      uLog('⚠️ 请先在设置中填写 Gist ID 并开启云同步', 'warn'); return false;
+    if (!CFG.cloudSyncEnable) {
+      uLog('⚠️ 请先开启云同步', 'warn'); return false;
     }
     uLog('⬇️ 正在下载题库（云端覆盖本地）…', 'info');
     try {
-      const resp = await _gistReq('GET', gistUrl(CFG.cloudGistId), null);
-      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
-      const file = data.files?.['minutestars_qa.json'];
-      if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
-      const remoteDB = JSON.parse(file.content);
-      // 标记全部题目来源为本地（下载到本地的属于本地题库）
+      const raw = await _readRepoFile(CFG.cloudFilePath);
+      const remoteDB = JSON.parse(raw);
       if (!_sourceMap) _sourceMap = {};
       Object.keys(remoteDB).forEach(q => { _sourceMap[q] = 'local'; });
-      // 直读云端模式：同时更新内存缓存
       if (CFG.cloudReadMode === 'cloud') {
         _cloudCache = remoteDB;
         _cloudCacheTime = Date.now();
       }
-      // 本地模式：保存到 GM_storage
       LibraryManager.save(remoteDB);
       _cache.dirty = true;
       const cnt = Object.keys(remoteDB).length;
@@ -1589,22 +1588,24 @@
     }
   }
 
-  /** 从 Gist 导入题库（追加到本地：云端有则用云端，本地有则保留本地）
-   *  @param {string} [gistId] - 可选，指定 Gist ID；不传则使用 CFG.cloudGistId
+  /** 从仓库导入题库（追加到本地：云端有则用云端，本地有则保留本地）
+   *  @param {string} [sourceUrl] - 可选，指定 raw URL 或 repo 文件路径；不传则使用默认路径
    */
-  async function cloudImport(gistId) {
-    const useId = gistId || CFG.cloudGistId;
-    if (!CFG.cloudSyncEnable || !useId) {
-      uLog('⚠️ 请先在设置中填写 Gist ID 并开启云同步', 'warn'); return false;
+  async function cloudImport(sourceUrl) {
+    if (!CFG.cloudSyncEnable) {
+      uLog('⚠️ 请先开启云同步', 'warn'); return false;
     }
+    const filePath = sourceUrl || CFG.cloudFilePath;
     uLog('☁ 正在导入云端题库（追加到本地）…', 'info');
     try {
-      const resp = await _gistReq('GET', gistUrl(useId), null);
-      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
-      const file = data.files?.['minutestars_qa.json'];
-      if (!file) throw new Error('Gist 中未找到 minutestars_qa.json');
-      const cloudDB = JSON.parse(file.content);
-      // 直读云端模式：与内存缓存合并
+      // 如果传入的是完整 URL（如分享链接），直接用 fetch
+      let raw;
+      if (filePath.startsWith('http')) {
+        raw = await _cloudReq('GET', filePath);
+      } else {
+        raw = await _readRepoFile(filePath);
+      }
+      const cloudDB = JSON.parse(raw);
       const localDB = CFG.cloudReadMode === 'cloud'
         ? (_cloudCache || {})
         : LibraryManager.load();
@@ -1638,10 +1639,10 @@
     }
   }
 
-  /** 通用 Gist 请求（Gitee） */
-  async function _gistReq(method, url, body) {
+  /** 通用云端请求 */
+  async function _cloudReq(method, url, body) {
     const headers = { 'Content-Type': 'application/json' };
-    uLog('📡 Gist 请求: ' + method + ' ' + url, 'info');
+    uLog('📡 云端请求: ' + method + ' ' + url.substring(0, 120), 'info');
 
     if (typeof fetch !== 'undefined') {
       uLog('🔧 使用 fetch', 'info');
@@ -2623,7 +2624,7 @@
         <div style="font-size:10px;color:#888;margin-top:4px">💡 推荐使用 <b>硅基流动</b>（免费额度），或自备 DeepSeek Key</div>
       </div>
 
-      <div class="ata-section-title">云同步 <span style="font-size:10px;color:#aaa">(Gitee)</span></div>
+      <div class="ata-section-title">云同步 <span style="font-size:10px;color:#aaa">(Gitee 仓库)</span></div>
       <div class="ata-row">
         <span class="ata-label">启用云同步</span>
         <label class="ata-toggle"><input type="checkbox" id="cfg-cloud-sync-enable"><span class="ata-slider"></span></label>
@@ -2638,17 +2639,18 @@
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">Token</span>
-          <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="Gitee 私人令牌（仅上传需要）" style="width:100%;box-sizing:border-box">
-          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 仅上传需要 Token；下载/导入可留空（Gist 需设为公开）</div>
+          <input type="password" id="cfg-cloud-token" class="ata-text-input" placeholder="Gitee 私人令牌（仅上传/分享需要）" style="width:100%;box-sizing:border-box">
+          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 读题库免 Token（公开 raw 链接）；写题库需 Token</div>
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-          <span class="ata-label">Gist ID</span>
-          <input type="text" id="cfg-cloud-gist-id" class="ata-text-input" placeholder="首次上传后自动填充" style="width:100%;box-sizing:border-box">
+          <span class="ata-label">题库路径</span>
+          <input type="text" id="cfg-cloud-file-path" class="ata-text-input" placeholder="tiku.json" style="width:100%;box-sizing:border-box">
+          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 仓库文件路径，默认 tiku.json；分享链接：https://gitee.com/law-of-order/MinuteStars-AutoAnswer/raw/main/<b id="cfg-share-preview">tiku.json</b></div>
         </div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-          <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px" title="上传本地题库到云端 Gist，与云端已有题目合并去重，本地题目优先保留">⬆ 上传题库（合并）</button>
-          <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px" title="从云端 Gist 下载题库，覆盖本地所有题目（云端为唯一权威来源）">⬇ 下载题库（覆盖）</button>
-          <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px" title="将云端 Gist 题库追加导入到本地（不影响云端，仅本地新增）">☁ 导入云端</button>
+          <button class="ata-btn green" id="ata-cloud-upload" style="font-size:11px;padding:4px 10px" title="上传本地题库到仓库文件，与云端合并去重">⬆ 上传题库（合并）</button>
+          <button class="ata-btn blue"  id="ata-cloud-download" style="font-size:11px;padding:4px 10px" title="从仓库下载题库，覆盖本地所有题目">⬇ 下载题库（覆盖）</button>
+          <button class="ata-btn purple" id="ata-cloud-import" style="font-size:11px;padding:4px 10px" title="从仓库追加导入到本地（不影响云端文件）">☁ 导入云端</button>
         </div>
         <div style="font-size:10px;color:#888;margin-top:4px">💡 <b>本地</b>：下载到本地，离线可用 | <b>直读云端</b>：实时拉取，无需下载，缓存 5 分钟</div>
       </div>
@@ -2908,10 +2910,11 @@
         <div class="ata-pane" id="pane-import-shared">
           <div class="ata-lib-format">
             <b>从分享链接导入题库</b><br>
-            输入他人分享的 Gist ID，从云端导入题库（追加模式，本地已有题目保留）<br>
+            粘贴他人分享的题库链接（完整 raw URL 或仓库文件路径），追加导入到本地<br>
+            <small style="color:#888">示例：https://gitee.com/law-of-order/MinuteStars-AutoAnswer/raw/main/tiku_share_xxx.json</small>
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin:12px 0">
-            <input type="text" id="ata-import-shared-id" placeholder="输入 Gist ID" style="flex:1;padding:8px;border-radius:8px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;">
+            <input type="text" id="ata-import-shared-id" placeholder="粘贴分享链接或仓库路径" style="flex:1;padding:8px;border-radius:8px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;">
             <button class="ata-btn green" id="ata-do-import-shared">📥 导入</button>
           </div>
           <div id="ata-import-shared-msg" style="font-size:12px;color:#aaa"></div>
@@ -3141,25 +3144,17 @@
     const count = Object.keys(db).length;
     if (count === 0) { uLog('题库为空，无需分享', 'warn'); return; }
     uLog('📤 正在生成分享链接...', 'info');
-    // 上传到 Gist（私有，需 token）
     if (!CFG.cloudToken) {
       uLog('⚠️ 请先在「云同步」中填写 Gitee Token', 'warn'); return;
     }
     try {
+      // 创建时间戳快照文件，分享原始链接（公开可访问）
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+      const shareFile = 'tiku_share_' + ts + '.json';
       const content = JSON.stringify(db, null, 2);
-      const payload = JSON.stringify({
-        public: false,
-        description: `MinuteStars 题库分享（${count} 题）`,
-        files: { 'minutestars_qa.json': { content } },
-      });
-      const resp = await _gistReq('POST', gistUrl(''), payload);
-      const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
-      if (data.id) {
-        const url = `https://gist.gitee.com/${data.id}`;
-        uLog('✅ 分享成功！链接：<a href="${url}" target="_blank">${url}</a>', 'ok');
-        // 保存到 Gist ID（方便管理）
-        CFG.cloudGistId = data.id; saveCFG();
-      }
+      await _writeRepoFile(shareFile, content, '题库分享快照 ' + ts);
+      const url = repoRawUrl(shareFile);
+      uLog('✅ 分享成功！<br>公开链接：<a href="' + url + '" target="_blank">' + url + '</a><br><small style="color:#888">（可复制链接发送给他人，国内网络直接访问）</small>', 'ok');
     } catch (e) {
       uLog('❌ 分享失败：' + e.message, 'err');
     }
@@ -3207,12 +3202,12 @@
   });
 
   $('#ata-do-import-shared').addEventListener('click', async () => {
-    const gistId = $('#ata-import-shared-id')?.value?.trim();
+    const url = $('#ata-import-shared-id')?.value?.trim();
     const msgEl = $('#ata-import-shared-msg');
-    if (!gistId) { if (msgEl) msgEl.textContent = '⚠️ 请输入 Gist ID'; return; }
+    if (!url) { if (msgEl) msgEl.textContent = '⚠️ 请输入分享链接'; return; }
     if (msgEl) msgEl.textContent = '⏳ 正在导入...';
-    const result = await cloudImport(gistId);
-    if (msgEl) msgEl.textContent = result ? '✅ 导入成功！' : '❌ 导入失败，请检查 Gist ID';
+    const result = await cloudImport(url);
+    if (msgEl) msgEl.textContent = result ? '✅ 导入成功！' : '❌ 导入失败，请检查链接';
   });
 
   /* =========================================================
@@ -5208,9 +5203,12 @@
     setVal('cfg-ai-endpoint',     curModelCfg.endpoint || CFG.aiEndpoint);
     setVal('cfg-ai-endpoint',     CFG.aiEndpoint);
     setChk('cfg-cloud-sync-enable', CFG.cloudSyncEnable);
-    setVal('cfg-cloud-gist-id',     CFG.cloudGistId);
+    setVal('cfg-cloud-file-path',  CFG.cloudFilePath);
     setVal('cfg-cloud-token',       CFG.cloudToken);
     setVal('cfg-cloud-read-mode',   CFG.cloudReadMode);
+    // 更新分享链接预览
+    const preview = ge('cfg-share-preview');
+    if (preview) preview.textContent = CFG.cloudFilePath || 'tiku.json';
     // 联动显示
     const aiRow = ge('cfg-ai-row');
     if (aiRow) aiRow.style.opacity = CFG.aiEnable ? '1' : '.4';
@@ -5278,9 +5276,9 @@
     CFG.aiApiKey   = CFG.aiModels[CFG.aiModel].apiKey;
     CFG.aiEndpoint = CFG.aiModels[CFG.aiModel].endpoint || 'https://api.siliconflow.cn/v1/chat/completions';
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
-    CFG.cloudGistId     = gVal('cfg-cloud-gist-id').trim();
-    CFG.cloudToken      = gVal('cfg-cloud-token').trim();
-    CFG.cloudReadMode  = gVal('cfg-cloud-read-mode') || 'local';
+    CFG.cloudFilePath    = gVal('cfg-cloud-file-path').trim() || 'tiku.json';
+    CFG.cloudToken       = gVal('cfg-cloud-token').trim();
+    CFG.cloudReadMode    = gVal('cfg-cloud-read-mode') || 'local';
     saveCFG();
     // 模式切换后刷新缓存
     _cache.dirty = true;
