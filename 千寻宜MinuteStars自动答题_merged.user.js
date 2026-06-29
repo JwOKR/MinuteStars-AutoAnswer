@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.43
+// @version      4.8.44
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -4136,6 +4136,7 @@
     }
 
     const fileCount = files.length;
+    window.__docxDebugLog = []; // 清空上次日志，只保留本次导入
     showDocxMsg('⏳ 正在解析 ' + fileCount + ' 个 Word 文档…', false);
 
     let totalAdded = 0, totalSkipped = 0;
@@ -4198,10 +4199,14 @@
         }
 
         const fileHint = fileCount > 1 ? '（' + fileCount + ' 个文件）' : '';
+        const logCount = (window.__docxDebugLog || []).length;
+        const exportBtn = logCount > 0
+          ? `<div style="margin-top:6px"><button id="ata-export-docx-log" style="background:#555;color:#ddd;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px">📋 导出本次解析日志（${logCount} 条）</button></div>`
+          : '';
         showDocxMsg(
           '✅ 成功导入 <b style="color:#66bb6a">' + totalAdded + '</b> 条' + fileHint +
           (totalSkipped > 0 ? '，跳过 <b style="color:#ffa726">' + totalSkipped + '</b> 条（已存在）' : '') +
-          dupHtml + previewHtml + errHtml,
+          dupHtml + previewHtml + errHtml + exportBtn,
           true
         );
         uLog('📄 Word文档导入：新增 ' + totalAdded + ' 条（跳过 ' + totalSkipped + ' 条，' + fileCount + ' 个文件）', totalAdded > 0 ? 'ok' : 'warn');
@@ -4221,6 +4226,19 @@
       
       showDocxMsg(msg, false);
     }
+
+    // 绑定导出日志按钮（如果有）
+    setTimeout(() => {
+      const btn = document.getElementById('ata-export-docx-log');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          const log = window.__docxDebugLog || [];
+          const content = JSON.stringify(log, null, 2);
+          const date = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+          downloadFile(content, 'Docx解析日志_' + date + '.json', 'application/json');
+        });
+      }
+    }, 100);
 
     e.target.value = '';
   });
