@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.6
+// @version      4.9.7
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -134,7 +134,7 @@
     cloudSyncEnable:  true,   // 云同步开关（默认打开）
     cloudReadMode:    'cloud', // 'local'=本地存储答题（需下载），'cloud'=直读云端答题（不落地）
     cloudRepoPath:    'law-of-order/MinuteStars-AutoAnswer', // 仓库路径（owner/repo）
-    cloudFilePath:    'tiku.json',       // 题库文件路径
+    cloudFilePath:    'minutestars_qa.json',       // 题库文件路径
     cloudBranch:      'main',            // 分支名
     cloudGistId:      '',     // [已废弃] 旧 Gist ID（用于迁移）
     cloudToken:       '',     // Gitee 私人令牌
@@ -2314,8 +2314,8 @@
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">题库路径</span>
-          <input type="text" id="cfg-cloud-file-path" class="ata-text-input" placeholder="tiku.json" style="width:100%;box-sizing:border-box">
-          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 分享链接：https://gitee.com/<b id="cfg-share-repo">law-of-order/MinuteStars-AutoAnswer</b>/raw/<b id="cfg-share-branch">main</b>/<b id="cfg-share-preview">tiku.json</b></div>
+          <input type="text" id="cfg-cloud-file-path" class="ata-text-input" placeholder="minutestars_qa.json" style="width:100%;box-sizing:border-box">
+          <div style="font-size:11px;color:var(--nm-text-secondary);margin-top:2px">💡 分享链接：https://gitee.com/<b id="cfg-share-repo">law-of-order/MinuteStars-AutoAnswer</b>/raw/<b id="cfg-share-branch">main</b>/<b id="cfg-share-preview">minutestars_qa.json</b></div>
         </div>
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">仓库路径</span>
@@ -4856,7 +4856,7 @@
     setChk('cfg-compress-enable',   CFG.compressEnable);
     // 更新分享链接预览
     const preview = ge('cfg-share-preview');
-    if (preview) preview.textContent = CFG.cloudFilePath || 'tiku.json';
+    if (preview) preview.textContent = CFG.cloudFilePath || 'minutestars_qa.json';
     const repoPreview = ge('cfg-share-repo');
     if (repoPreview) repoPreview.textContent = CFG.cloudRepoPath || 'law-of-order/MinuteStars-AutoAnswer';
     const branchPreview = ge('cfg-share-branch');
@@ -4918,7 +4918,7 @@
     // 保存每模型配置
     // 同时更新全局（向后兼容）
     CFG.cloudSyncEnable = gChk('cfg-cloud-sync-enable');
-    CFG.cloudFilePath    = gVal('cfg-cloud-file-path').trim() || 'tiku.json';
+    CFG.cloudFilePath    = gVal('cfg-cloud-file-path').trim() || 'minutestars_qa.json';
     CFG.cloudRepoPath    = gVal('cfg-cloud-repo-path').trim() || 'law-of-order/MinuteStars-AutoAnswer';
     CFG.cloudBranch      = gVal('cfg-cloud-branch').trim() || 'main';
     CFG.cloudToken       = gVal('cfg-cloud-token').trim();
