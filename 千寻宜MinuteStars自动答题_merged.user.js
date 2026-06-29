@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.15
+// @version      4.9.16
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -770,7 +770,10 @@
     return 4;
   }
 
+  let _rebuilding = false;
   function rebuildCache() {
+    if (_rebuilding) return; // 防止并发重建
+    _rebuilding = true;
     let userDB;
     if (CFG.cloudReadMode === 'cloud') {
       // 云端模式：合并本地题库 + 云端缓存（云端优先）
@@ -820,6 +823,7 @@
       _cache.dirtyKeys?.clear();
       _cache.dirty = false;
       _cache.userCount = Object.keys(userDB).length;
+      _rebuilding = false;
       return;
     }
 
@@ -847,6 +851,7 @@
     _cache.dirty = false;
     _cache.dirtyKeys?.clear();
     _cache.userCount = Object.keys(userDB).length;
+    _rebuilding = false;
   }
   function getMergedCache() {
     if (_cache.dirty) rebuildCache();
@@ -5582,8 +5587,14 @@
 
     _cache.dirty = true;
     refreshLibCount();
-    // 云端模式：页面加载时立即拉取云端题库
-    if (CFG.cloudReadMode === 'cloud') { fetchCloudDB(); }
+    // 云端模式：页面加载时先拉取云端题库（await 确保数据就绪再答题）
+    if (CFG.cloudReadMode === 'cloud') {
+      try {
+        await fetchCloudDB();
+      } catch (e) {
+        uLog('⚠️ 云端题库加载失败，使用本地题库: ' + (e.message || ''), 'warn');
+      }
+    }
 
     setTimeout(() => {
       const qs = findQContainers();

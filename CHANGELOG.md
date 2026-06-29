@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.16
+### 🐛 修复
+- **匹配不到答案**：`rebuildCache()` 的 `_rebuilding` 锁从未释放，导致第一次调用后所有后续缓存重建被跳过，`getMergedCache()` 返回空/旧数据 -> 所有题目匹配失败
+
 ## v4.9.15
 ### 🐛 修复
 - **GM_xmlhttpRequest 被 @connect 阻止**：添加 `@connect gitee.com`（Tampermonkey 安全策略要求所有跨域请求的域名必须在 `@connect` 列表中声明）
