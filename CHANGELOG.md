@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.25
+### 🐛 修复
+- **换电脑/新环境获取不到云端题库** — Gitee raw 链接会 302 重定向到 `raw.giteeusercontent.com`，该域名未在 `@connect` 白名单中导致 GM_xhr 拒绝连接。新增 `@connect giteeusercontent.com`
+
 ## v4.9.24
 ### 🐛 修复
 - **Edge 浏览器获取不到云端题库** — `_cloudReq` 只检测旧版 `GM_xmlhttpRequest`，Edge 版 Tampermonkey 可能只暴露 `GM.xmlHttpRequest`（命名空间 API），导致跨域请求不可用。现在同时支持两种 API 并给出明确错误提示

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.24
+// @version      4.9.25
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -14,6 +14,7 @@
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @connect      gitee.com
+// @connect      giteeusercontent.com
 // @connect      api.github.com
 // @run-at       document-idle
 // ==/UserScript==
