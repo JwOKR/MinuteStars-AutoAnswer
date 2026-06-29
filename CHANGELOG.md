@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.9.1
+### 🐛 修复
+- **修复 AI 模块移除残留 bug**
+  - `runAutoAnswer` 缺失 `processQuestions` 调用，导致 `ReferenceError: ok is not defined`
+  - `processQuestions` 内 AI 残留代码导致规则推断成功后错误标记为"未匹配"并 `skip++`
+  - 让 `processQuestions` 返回 `{ ok, infer, skip }` 供调用方使用
+
 ## v4.9.0
 ### 🔥 重大变更
 - **彻底移除 AI 辅助模块**

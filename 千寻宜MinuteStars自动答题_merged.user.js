@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.0
+// @version      4.9.1
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -4697,16 +4697,6 @@
           c.classList.add('ata-answered');
           uLog('🔎 规则推断 ' + txt.substring(0, 30) + '… → ' + ruleAns, 'info');
           infer++;
-          if (aiAns) {
-            matchedAnswer = aiAns; matchMethod = 'ai';
-            await fill(c, aiAns);
-            c.classList.add('ata-answered');
-            ok++;
-          } else {
-            c.classList.add('ata-no-match');
-            uLog('⚠️ 未匹配: ' + txt.substring(0, 40), 'warn');
-            skip++;
-          }
         } else {
           c.classList.add('ata-no-match');
           uLog('⚠️ 未匹配: ' + txt.substring(0, 40), 'warn');
@@ -4732,6 +4722,7 @@
       if (!running) break;
       await sleep(CFG.answerDelay + Math.random() * 200);
     }
+    return { ok, infer, skip };
   }
 
   async function runAutoAnswer() {
@@ -4760,6 +4751,7 @@
       setProgress(0, containers.length);
       const seenQ = new Set();
 
+      const { ok, infer, skip } = await processQuestions(containers, seenQ);
 
       uLog('完成！命中 ' + ok + '，推断 ' + infer + '，跳过 ' + skip, 'ok');
       setRunningStatus('✅ 完成！命中' + (ok+infer) + '题', 'done');
