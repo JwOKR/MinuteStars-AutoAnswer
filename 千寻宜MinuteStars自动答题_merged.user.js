@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.31
+// @version      4.9.32
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -123,8 +123,8 @@
     autoLogin:   false,
     autoAnswer:  true,   // 加载后自动答题
     autoSubmit:  true,   // 答完自动提交
-    submitDelayMin: 1,
-    submitDelayMax: 3,
+    submitDelayMin: 20,
+    submitDelayMax: 30,
     answerDelay: 120,
     fuzzyEnable: false,
     fuzzyThresh: 0.75,
