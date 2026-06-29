@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.27
+// @version      4.9.28
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -5750,8 +5750,7 @@
         setRunningStatus('等待页面加载…', 'idle');
       }
       if (CFG.autoAnswer) {
-        uLog('3 秒后自动开始…', 'warn');
-        setTimeout(runAutoAnswer, 3000);
+        runAutoAnswer();
       }
     }, 1500);
   })();
