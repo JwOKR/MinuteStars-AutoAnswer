@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.35
+### 🔧 变更
+- **添加 GreasyFork 元数据** — 添加 `@description` 和 `@license MIT`，准备上传到 GreasyFork/OpenUserJS
+
 ## v4.9.34
 ### 🐛 修复
 - **重置按钮导致设置关闭** — `$$('input')` 误伤面板内开关，改为排除 `#ata-panel` 内的 input

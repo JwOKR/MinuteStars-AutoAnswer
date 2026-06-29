@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.34
+// @version      4.9.35
 // @author       JIA
+// @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
+// @license      MIT
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
 // @match        *://*.chaoxing.com/*
