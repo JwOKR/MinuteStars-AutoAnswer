@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.4
+### 🐛 修复
+- **修复 `pct is not defined`** — `updateStatsCards()` 调用在 AI 移除时被误删，补回调用并赋值 `pct`
+
 ## v4.9.3
 ### 🐛 修复
 - **修复 `libCnt` / `ruleCnt` 未声明** — `processQuestions` 中使用了三个未声明的变量，导致 `ReferenceError: libCnt is not defined`

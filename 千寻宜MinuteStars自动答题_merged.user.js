@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.3
+// @version      4.9.4
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -4710,6 +4710,7 @@
       }
       addRecentLog(txt, matchedAnswer, matchMethod);
       updateAccuracyHistory(matchedAnswer !== null);
+      const pct = updateStatsCards({ ok, infer, skip, i, total: containers.length, libCnt, ruleCnt });
       const elapsed = Date.now() - _speedStart;
       _speedTimes.push(elapsed);
       if (_speedTimes.length > 200) _speedTimes = _speedTimes.slice(-200);
