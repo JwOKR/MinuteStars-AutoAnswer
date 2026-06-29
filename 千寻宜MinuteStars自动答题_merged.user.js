@@ -4160,7 +4160,7 @@
         return;
       }
       
-      const { added, skipped, preview, duplicates } = result;
+      const { added, skipped, preview, duplicates, errors } = result;
       refreshLibCount();
       refreshStats();
       renderBrowse(1);
