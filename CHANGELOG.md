@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.29
+### 🐛 修复
+- **修复重置/暂停后立即提交** — `processQuestions` 被重置中断后 `running=false`，但 `runAutoAnswer` 仍未加判断就调用了 `handleSubmitCountdown` 启动倒计时。新增 `&& running` 条件检查
+
 ## v4.9.28
 ### 🔧 变更
 - **取消自动答题的 3s 倒计时** — 检测到题目后立即开始答题，不再等待 3 秒

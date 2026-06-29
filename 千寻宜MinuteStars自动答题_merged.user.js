@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.28
+// @version      4.9.29
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -4957,7 +4957,7 @@
       setRunningStatus('✅ 完成！命中' + (ok+infer) + '题', 'done');
       gmNotify('答题完成', '命中 ' + (ok+infer) + ' 题，跳过 ' + skip + ' 题');
 
-      if (CFG.autoSubmit) {
+      if (CFG.autoSubmit && running) {
         handleSubmitCountdown(CFG.submitDelayMin, CFG.submitDelayMax);
       }
     } catch (e) {
