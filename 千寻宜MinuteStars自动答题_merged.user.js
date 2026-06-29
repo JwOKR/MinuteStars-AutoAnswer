@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.20
+// @version      4.9.21
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -4432,13 +4432,13 @@
   const statusText = $('#ata-status-text');
 
   function uLog(msg, cls) {
-    if (!logEl) return;
+    const el = $('#ata-log'); if (!el) return;
     const colors = { ok:'#4ade80', warn:'#fbbf24', err:'#f87171', info:'#94a3b8' };
     const c = colors[cls] || '#94a3b8';
     const t = new Date().toLocaleTimeString();
     const d = document.createElement('div');
     d.innerHTML = '<span style="color:' + c + '">[' + t + '] ' + escHtml(msg) + '</span>';
-    logEl.prepend(d);
+    el.prepend(d);
     console.log('[ATA Pro]', msg);
   }
 

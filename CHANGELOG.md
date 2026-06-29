@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.21
+### 🐛 修复
+- **ReferenceError: Cannot access 'logEl' before initialization** — `uLog()` 改为惰性 DOM 查询，避免 `const` TDZ 导致初始化阶段 `handleLogin()` 调用崩溃
+
 ## v4.9.20
 ### ✨ 新增
 - **题目加密上传**：AES-GCM 加密，云端文件存为密文（`ENC:` 前缀），不可直接阅读
