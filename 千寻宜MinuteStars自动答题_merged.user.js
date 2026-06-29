@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.32
+// @version      4.9.33
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -130,8 +130,8 @@
     fuzzyThresh: 0.75,
     debug:       false,
     // v4.5.39 新增
-    shortcutsEnable:  true,   // 快捷键（Alt+Enter答题/提交，Alt+S暂停）
-    notifyEnable:     true,   // 系统通知（GM_notification）
+    shortcutsEnable:  false,  // 快捷键（Alt+Enter答题/提交，Alt+S暂停）
+    notifyEnable:     false,  // 系统通知（GM_notification）
     compressEnable:   false,  // 压缩支持（LZ-string，可减少存储占用，默认关闭）    },
     cloudSyncEnable:  true,   // 云同步开关（默认打开）
     cloudReadMode:    'cloud', // 'local'=本地存储答题（需下载），'cloud'=直读云端答题（不落地）
