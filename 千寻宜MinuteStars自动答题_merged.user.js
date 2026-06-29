@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.26
+// @version      4.9.27
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -140,8 +140,7 @@
     cloudBranch:      'main',            // 分支名
     cloudGistId:      '',     // [已废弃] 旧 Gist ID（用于迁移）
     cloudToken:       '',     // Gitee 私人令牌
-    cloudEncrypt:     false,  // 加密上传（AES-GCM）
-    cloudEncryptKey:  '',     // 加密密码（留空使用内置密码 1129）
+    cloudEncrypt:     false,  // 加密上传（AES-GCM，内置密码 1129）
     customDomains:    [],    // 自定义匹配域名（运行时生效）
   };
 
@@ -1217,9 +1216,8 @@
     return new TextDecoder().decode(decrypted);
   }
 
-  /** 获取加密密码（配置为空时用 token 派生，保证多端可读） */
+  /** 获取加密密码（统一使用内置密码 1129） */
   function _getEncryptKey() {
-    if (CFG.cloudEncryptKey && CFG.cloudEncryptKey.trim()) return CFG.cloudEncryptKey.trim();
     return '1129';
   }
 
@@ -2499,12 +2497,7 @@
         <div class="ata-row">
           <span class="ata-label">加密上传</span>
           <label class="ata-toggle"><input type="checkbox" id="cfg-cloud-encrypt"><span class="ata-slider"></span></label>
-          <span style="font-size:10px;color:#888;margin-left:4px">AES-GCM 加密，云端文件不可直接阅读</span>
-        </div>
-        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px" id="row-cloud-encrypt-key" hidden>
-          <span class="ata-label">加密密码</span>
-          <input type="password" id="cfg-cloud-encrypt-key" class="ata-text-input" placeholder="留空则无需密码（用默认密钥）" style="width:100%;box-sizing:border-box">
-          <div style="font-size:10px;color:#f87171;margin-top:2px">⚠️ 请牢记密码，丢失无法恢复！</div>
+          <span style="font-size:10px;color:#888;margin-left:4px">AES-GCM 加密（密码 1129），云端不可直接阅读</span>
         </div>
         <div class="ata-row">
           <span class="ata-label">数据压缩</span>
@@ -5036,10 +5029,6 @@
     setVal('cfg-cloud-read-mode',   CFG.cloudReadMode);
     setChk('cfg-compress-enable',   CFG.compressEnable);
     setChk('cfg-cloud-encrypt',     CFG.cloudEncrypt);
-    setVal('cfg-cloud-encrypt-key',  CFG.cloudEncryptKey);
-    // 加密密码行显隐
-    const encKeyRow = ge('row-cloud-encrypt-key');
-    if (encKeyRow) encKeyRow.hidden = !CFG.cloudEncrypt;
     // 更新分享链接预览
     const preview = ge('cfg-share-preview');
     if (preview) preview.textContent = CFG.cloudFilePath || 'minutestars_qa.json';
@@ -5111,7 +5100,6 @@
     CFG.cloudReadMode    = gVal('cfg-cloud-read-mode') || 'cloud';
     CFG.compressEnable   = gChk('cfg-compress-enable');
     CFG.cloudEncrypt     = gChk('cfg-cloud-encrypt');
-    CFG.cloudEncryptKey  = gVal('cfg-cloud-encrypt-key').trim();
     // 模式切换后刷新缓存
     _cache.dirty = true;
     if (CFG.cloudReadMode === 'cloud') fetchCloudDB(); // 立即拉取云端
@@ -5293,12 +5281,6 @@
   document.getElementById('cfg-cloud-sync-enable')?.addEventListener('change', function () {
     const row = document.getElementById('cfg-cloud-row');
     if (row) row.style.opacity = this.checked ? '1' : '.4';
-  });
-
-  // v4.9.19 加密开关 → 密码框显隐
-  document.getElementById('cfg-cloud-encrypt')?.addEventListener('change', function () {
-    const row = document.getElementById('row-cloud-encrypt-key');
-    if (row) row.hidden = !this.checked;
   });
 
   // v4.5.39 云同步按钮
