@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.30
+### 🔧 变更
+- **加密上传默认开启** — `cloudEncrypt` 默认值 `false` → `true`
+
 ## v4.9.29
 ### 🐛 修复
 - **修复重置/暂停后立即提交** — `processQuestions` 被重置中断后 `running=false`，但 `runAutoAnswer` 仍未加判断就调用了 `handleSubmitCountdown` 启动倒计时。新增 `&& running` 条件检查

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.29
+// @version      4.9.30
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -140,7 +140,7 @@
     cloudBranch:      'main',            // 分支名
     cloudGistId:      '',     // [已废弃] 旧 Gist ID（用于迁移）
     cloudToken:       '',     // Gitee 私人令牌
-    cloudEncrypt:     false,  // 加密上传（AES-GCM，内置密码 1129）
+    cloudEncrypt:     true,   // 加密上传（AES-GCM，内置密码 1129）
     customDomains:    [],    // 自定义匹配域名（运行时生效）
   };
 
