@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.10
+// @version      4.9.11
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1173,11 +1173,19 @@
       }
       uLog('⚠️ raw 链接失败，尝试 API 读取', 'warn');
       // 回退到 API（需要 Token）
-      const apiUrl = repoApiUrl(filePath) + '?access_token=' + CFG.cloudToken;
-      const resp = await _cloudReq('GET', apiUrl);
-      const data = JSON.parse(resp);
-      if (data.content) return atob(data.content.replace(/\n/g, ''));
-      throw new Error('仓库文件为空');
+      try {
+        const apiUrl = repoApiUrl(filePath) + '?access_token=' + CFG.cloudToken;
+        const resp = await _cloudReq('GET', apiUrl);
+        const data = JSON.parse(resp);
+        if (data.content) return atob(data.content.replace(/\n/g, ''));
+        throw new Error('仓库文件为空');
+      } catch (apiErr) {
+        const msg = apiErr.message || '';
+        if (msg.includes('projects') || msg.includes('scope')) {
+          throw new Error('Token 缺少 projects 权限，请重新生成 Token（勾选 projects）');
+        }
+        throw apiErr;
+      }
     }
   }
 
@@ -1325,7 +1333,9 @@
 
   /** 通用云端请求 */
   async function _cloudReq(method, url, body) {
-    const headers = { 'Content-Type': 'application/json' };
+    const hasBody = (method !== 'GET' && method !== 'HEAD');
+    const headers = {};
+    if (hasBody) headers['Content-Type'] = 'application/json';
     uLog('📡 云端请求: ' + method + ' ' + url.substring(0, 120), 'info');
 
     if (typeof fetch !== 'undefined') {
@@ -1333,7 +1343,7 @@
       const resp = await fetch(url, {
         method,
         headers,
-        body: (method !== 'GET' && method !== 'HEAD') ? body : undefined,
+        body: hasBody ? body : undefined,
       });
       const text = await resp.text();
       uLog('📥 fetch 响应: ' + resp.status + ' | ' + text.substring(0, 300), 'info');

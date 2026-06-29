@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.11
+### 🐛 修复
+- **raw URL 请求优化**：GET 请求不再带 `Content-Type` 头，避免触发 CORS 预检导致 Gitee raw 被拦截
+- **Token 权限错误提示**：API 回退失败时识别 `no 'projects' scope`，提示用户重新生成带 projects 权限的 Token
+
 ## v4.9.10
 ### 🐛 修复
 - 云端题库文件未创建时避免 401 错误：`_readRepoFile` 在无 Token 时不尝试 API 回退
