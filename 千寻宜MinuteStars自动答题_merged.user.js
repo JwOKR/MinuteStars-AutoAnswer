@@ -13,6 +13,7 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
+// @connect      gitee.com
 // @connect      api.github.com
 // @run-at       document-idle
 // ==/UserScript==

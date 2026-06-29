@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.15
+### 🐛 修复
+- **GM_xmlhttpRequest 被 @connect 阻止**：添加 `@connect gitee.com`（Tampermonkey 安全策略要求所有跨域请求的域名必须在 `@connect` 列表中声明）
+
 ## v4.9.14
 ### 🐛 修复
 - **跨域 CORS 错误**：`_cloudReq` 对 `gitee.com` 请求改用 `GM_xmlhttpRequest`（绕过 CORS），同源请求保持 `fetch`
