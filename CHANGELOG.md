@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.12
+### 🐛 修复
+- **上传题库到 Gitee 400 错误**：`access_token` 从 body 移到 URL 参数；新文件用 POST，已有文件用 PUT（Gitee API 要求）
+- **sha is missing 错误**：`_writeRepoFile` 根据是否有 sha 自动选择 POST（创建）或 PUT（更新）
+
 ## v4.9.11
 ### 🐛 修复
 - **raw URL 请求优化**：GET 请求不再带 `Content-Type` 头，避免触发 CORS 预检导致 Gitee raw 被拦截

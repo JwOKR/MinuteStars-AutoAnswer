@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.11
+// @version      4.9.12
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1191,25 +1191,29 @@
 
   /** 写入仓库文件（始终需要 Token） */
   async function _writeRepoFile(filePath, content, message) {
-    const apiUrl = repoApiUrl(filePath);
+    const apiBase = repoApiUrl(filePath);
+    const authParam = 'access_token=' + CFG.cloudToken;
     // 先获取现有文件的 sha（用于更新）
     let sha = '';
     try {
-      const apiGetUrl = apiUrl + '?access_token=' + CFG.cloudToken;
+      const apiGetUrl = apiBase + '?' + authParam;
       const resp = await _cloudReq('GET', apiGetUrl);
       const data = JSON.parse(resp);
       sha = data.sha || '';
     } catch { /* 文件不存在，创建新文件 */ }
 
     const payload = JSON.stringify({
-      access_token: CFG.cloudToken,
       content: btoa(unescape(encodeURIComponent(content))),
       message: message,
       branch: CFG.cloudBranch,
       ...(sha ? { sha } : {}),
     });
-    uLog('📤 写入仓库文件: ' + filePath + (sha ? ' (更新)' : ' (新建)'), 'info');
-    return _cloudReq('PUT', apiUrl, payload);
+
+    // 新文件用 POST，已有文件用 PUT（都需要 sha）
+    const method = sha ? 'PUT' : 'POST';
+    const apiUrl = apiBase + '?' + authParam;
+    uLog('📤 写入仓库文件: ' + filePath + ' (' + method + ')' + (sha ? ' 更新' : ' 新建'), 'info');
+    return _cloudReq(method, apiUrl, payload);
   }
 
   /** 上传题库到仓库文件（合并去重：本地题库优先，云端兜底） */
