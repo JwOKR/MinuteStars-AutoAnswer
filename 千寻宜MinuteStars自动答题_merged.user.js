@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.19
+// @version      4.9.20
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -139,6 +139,8 @@
     cloudBranch:      'main',            // 分支名
     cloudGistId:      '',     // [已废弃] 旧 Gist ID（用于迁移）
     cloudToken:       '',     // Gitee 私人令牌
+    cloudEncrypt:     false,  // 加密上传（AES-GCM）
+    cloudEncryptKey:  '',     // 加密密码（留空则每次随机生成）
     customDomains:    [],    // 自定义匹配域名（运行时生效）
   };
 
@@ -1155,6 +1157,62 @@
      ⚡ 公开可分享、国内网络快、读免认证
   ========================================================= */
 
+  // ==================== 加密/解密（AES-GCM） ====================
+
+  const _ENC_PREFIX = 'ENC:';
+
+  /** 从密码派生 AES-GCM 密钥 */
+  async function _deriveKey(password, salt) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  /** 加密内容，返回 "ENC:" + Base64(salt+IV+ciphertext) */
+  async function _encryptContent(plaintext, password) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await _deriveKey(password, salt);
+    const enc = new TextEncoder();
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plaintext));
+    // concat salt + iv + ciphertext
+    const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+    combined.set(salt, 0);
+    combined.set(iv, salt.length);
+    combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
+    return _ENC_PREFIX + btoa(String.fromCharCode(...combined));
+  }
+
+  /** 解密内容，自动检测是否加密 */
+  async function _decryptContent(data, password) {
+    if (!data || typeof data !== 'string') return data;
+    if (!data.startsWith(_ENC_PREFIX)) return data; // 未加密，直接返回
+
+    const base64 = data.substring(_ENC_PREFIX.length);
+    const combined = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const salt = combined.slice(0, 16);
+    const iv = combined.slice(16, 28);
+    const ciphertext = combined.slice(28);
+
+    const key = await _deriveKey(password, salt);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  }
+
+  /** 获取加密密码（配置为空时用 token 派生，保证多端可读） */
+  function _getEncryptKey() {
+    if (CFG.cloudEncryptKey && CFG.cloudEncryptKey.trim()) return CFG.cloudEncryptKey.trim();
+    return 'ATA_DEFAULT_KEY';
+  }
+
+  // ==================== Gitee 仓库 URL / 读写 ====================
+
   /** 构建 Gitee 仓库 Raw URL（公开访问，免认证） */
   function repoRawUrl(filePath) {
     return `https://gitee.com/${CFG.cloudRepoPath}/raw/${CFG.cloudBranch}/${filePath}`;
@@ -1169,9 +1227,10 @@
   async function _readRepoFile(filePath) {
     const rawUrl = repoRawUrl(filePath);
     uLog('📡 读取仓库文件: ' + rawUrl, 'info');
+    let raw;
     // 先尝试免认证 raw 链接
     try {
-      return await _cloudReq('GET', rawUrl);
+      raw = await _cloudReq('GET', rawUrl);
     } catch {
       // raw 链接失败（404/401等），检查是否有 Token 可用
       if (!CFG.cloudToken) {
@@ -1184,11 +1243,10 @@
         const resp = await _cloudReq('GET', apiUrl);
         const data = JSON.parse(resp);
         if (data.content) {
-          // 正确解码 UTF-8 Base64 内容（atob 无法直接处理中文）
           const rawBytes = Uint8Array.from(atob(data.content.replace(/\n/g, '')), c => c.charCodeAt(0));
-          return new TextDecoder('utf-8').decode(rawBytes);
+          raw = new TextDecoder('utf-8').decode(rawBytes);
         }
-        throw new Error('仓库文件为空');
+        if (!raw) throw new Error('仓库文件为空');
       } catch (apiErr) {
         const msg = apiErr.message || '';
         if (msg.includes('projects') || msg.includes('scope')) {
@@ -1197,6 +1255,15 @@
         throw apiErr;
       }
     }
+    // 如果启用了加密，尝试解密
+    if (CFG.cloudEncrypt && raw) {
+      try {
+        raw = await _decryptContent(raw, _getEncryptKey());
+      } catch (e) {
+        uLog('⚠️ 解密失败（密码错误或文件未加密），尝试按明文处理: ' + e.message, 'warn');
+      }
+    }
+    return raw;
   }
 
   /** 写入仓库文件（始终需要 Token） */
@@ -1212,8 +1279,15 @@
       sha = data.sha || '';
     } catch { /* 文件不存在，创建新文件 */ }
 
+    // 如果启用了加密，先加密内容
+    let finalContent = content;
+    if (CFG.cloudEncrypt) {
+      finalContent = await _encryptContent(content, _getEncryptKey());
+      uLog('🔒 内容已加密上传', 'info');
+    }
+
     const payload = JSON.stringify({
-      content: btoa(String.fromCharCode(...new TextEncoder().encode(content))),
+      content: btoa(String.fromCharCode(...new TextEncoder().encode(finalContent))),
       message: message,
       branch: CFG.cloudBranch,
       ...(sha ? { sha } : {}),
@@ -2399,6 +2473,16 @@
         <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px">
           <span class="ata-label">分支</span>
           <input type="text" id="cfg-cloud-branch" class="ata-text-input" placeholder="main" style="width:100%;box-sizing:border-box">
+        </div>
+        <div class="ata-row">
+          <span class="ata-label">加密上传</span>
+          <label class="ata-toggle"><input type="checkbox" id="cfg-cloud-encrypt"><span class="ata-slider"></span></label>
+          <span style="font-size:10px;color:#888;margin-left:4px">AES-GCM 加密，云端文件不可直接阅读</span>
+        </div>
+        <div class="ata-row" style="flex-direction:column;align-items:flex-start;gap:4px" id="row-cloud-encrypt-key" hidden>
+          <span class="ata-label">加密密码</span>
+          <input type="password" id="cfg-cloud-encrypt-key" class="ata-text-input" placeholder="留空则无需密码（用默认密钥）" style="width:100%;box-sizing:border-box">
+          <div style="font-size:10px;color:#f87171;margin-top:2px">⚠️ 请牢记密码，丢失无法恢复！</div>
         </div>
         <div class="ata-row">
           <span class="ata-label">数据压缩</span>
@@ -4929,6 +5013,11 @@
     setVal('cfg-cloud-token',       CFG.cloudToken);
     setVal('cfg-cloud-read-mode',   CFG.cloudReadMode);
     setChk('cfg-compress-enable',   CFG.compressEnable);
+    setChk('cfg-cloud-encrypt',     CFG.cloudEncrypt);
+    setVal('cfg-cloud-encrypt-key',  CFG.cloudEncryptKey);
+    // 加密密码行显隐
+    const encKeyRow = ge('row-cloud-encrypt-key');
+    if (encKeyRow) encKeyRow.hidden = !CFG.cloudEncrypt;
     // 更新分享链接预览
     const preview = ge('cfg-share-preview');
     if (preview) preview.textContent = CFG.cloudFilePath || 'minutestars_qa.json';
@@ -4999,6 +5088,8 @@
     CFG.cloudToken       = gVal('cfg-cloud-token').trim();
     CFG.cloudReadMode    = gVal('cfg-cloud-read-mode') || 'cloud';
     CFG.compressEnable   = gChk('cfg-compress-enable');
+    CFG.cloudEncrypt     = gChk('cfg-cloud-encrypt');
+    CFG.cloudEncryptKey  = gVal('cfg-cloud-encrypt-key').trim();
     // 模式切换后刷新缓存
     _cache.dirty = true;
     if (CFG.cloudReadMode === 'cloud') fetchCloudDB(); // 立即拉取云端
@@ -5180,6 +5271,12 @@
   document.getElementById('cfg-cloud-sync-enable')?.addEventListener('change', function () {
     const row = document.getElementById('cfg-cloud-row');
     if (row) row.style.opacity = this.checked ? '1' : '.4';
+  });
+
+  // v4.9.19 加密开关 → 密码框显隐
+  document.getElementById('cfg-cloud-encrypt')?.addEventListener('change', function () {
+    const row = document.getElementById('row-cloud-encrypt-key');
+    if (row) row.hidden = !this.checked;
   });
 
   // v4.5.39 云同步按钮
