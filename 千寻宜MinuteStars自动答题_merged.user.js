@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.8.45
+// @version      4.8.46
 // @author       JIA
 // @description  MinuteStars专用：纯云端题库 + 直读云端模式（不落地）+ IndexedDB大数据存储 + Jaro-Winkler模糊匹配(N-gram预筛) + 规则推断 + AI语义兜底(DeepSeek/硅基/重试) + 语义去重 + 正确率趋势图 + 答案来源标注 + Gitee Gist云同步 + 快捷键 + GM通知 + 答题报告 + 题库浏览增强 + 配置分离备份 + Word导入 + 拖拽/缩放 + 域名通配 + 实时命中率 + 答题记录 + 题库标签 + 策略预设 + 设置搜索 + 深色模式 + 速度曲线 + 饼图统计
 // @match        *://*.minutestars.com/*
@@ -3790,7 +3790,7 @@
           }
           // 遇到下一题 → 缺少答案，跳过
           else if (isQuestionStart(line)) {
-            debugLog('DEBUG', 'STATE_MACHINE', '缺少答案，跳过当前题', { lines: currentQALines.length });
+            debugLog('INFO', 'SKIP', '缺少答案，跳过当前题', { q: currentQALines.join(' ').substring(0, 80) });
             currentQALines = [line]; // 开始新题
             currentAnswer = null;
             state = State.COLLECTING_QUESTION;
@@ -3820,14 +3820,16 @@
                 if (db.hasOwnProperty(qText)) {
                   duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
                   skipped++;
+                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
                 } else {
                   db[qText] = normalizedAnswer;
                   added++;
                   preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
                 }
               } else {
                 skipped++;
+                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
               }
             }
             
@@ -3856,14 +3858,16 @@
                 if (db.hasOwnProperty(qText)) {
                   duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
                   skipped++;
+                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
                 } else {
                   db[qText] = normalizedAnswer;
                   added++;
                   preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
                 }
               } else {
                 skipped++;
+                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
               }
             }
             
@@ -3889,14 +3893,16 @@
                 if (db.hasOwnProperty(qText)) {
                   duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
                   skipped++;
+                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
                 } else {
                   db[qText] = normalizedAnswer;
                   added++;
                   preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
                 }
               } else {
                 skipped++;
+                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
               }
             }
             
@@ -3925,14 +3931,16 @@
                 if (db.hasOwnProperty(qText)) {
                   duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
                   skipped++;
+                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
                 } else {
                   db[qText] = normalizedAnswer;
                   added++;
                   preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('DEBUG', 'STATE_MACHINE', '保存题目', { q: qText.substring(0, 50), a: normalizedAnswer });
+                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
                 }
               } else {
                 skipped++;
+                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
               }
             }
             
@@ -3962,14 +3970,16 @@
           if (db.hasOwnProperty(qText)) {
             duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
             skipped++;
+            debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
           } else {
             db[qText] = normalizedAnswer;
             added++;
             preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-            debugLog('DEBUG', 'STATE_MACHINE', '文档结束，保存最后一题', { q: qText.substring(0, 50), a: normalizedAnswer });
+            debugLog('INFO', 'IMPORT', '新增题目（文档末尾）', { q: qText.substring(0, 80), a: normalizedAnswer });
           }
         } else {
           skipped++;
+          debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
         }
       }
     }
