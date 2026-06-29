@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.2
+// @version      4.9.3
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -4662,7 +4662,7 @@
 
   /* ---- 提取：题目遍历与答题核心逻辑 ---- */
   async function processQuestions(containers, seenQ) {
-    let ok = 0, skip = 0, infer = 0;
+    let ok = 0, skip = 0, infer = 0, libCnt = 0, ruleCnt = 0;
     _speedTimes = [];
     let _speedStart = Date.now();
     const speedWrap = document.getElementById('ata-speed-wrap');

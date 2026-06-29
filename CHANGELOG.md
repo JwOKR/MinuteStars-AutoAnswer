@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.3
+### 🐛 修复
+- **修复 `libCnt` / `ruleCnt` 未声明** — `processQuestions` 中使用了三个未声明的变量，导致 `ReferenceError: libCnt is not defined`
+
 ## v4.9.2
 ### ✨ 新增
 - **补全设置面板缺失项**
