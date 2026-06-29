@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.13
+### 🐛 修复
+- **自动登录彻底重写**：`$()` 改为 `document.querySelector`（不依赖页面 jQuery）；MutationObserver 10s 超时改为 `setInterval` 持续轮询
+- 登录表单消失后自动重置 `_loginHandled`，支持 session 过期后重新自动登录
+
 ## v4.9.12
 ### 🐛 修复
 - **上传题库到 Gitee 400 错误**：`access_token` 从 body 移到 URL 参数；新文件用 POST，已有文件用 PUT（Gitee API 要求）

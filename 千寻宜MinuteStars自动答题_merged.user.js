@@ -2075,24 +2075,26 @@
   /* =========================================================
      自动登录
   ========================================================= */
-  let _loginHandled = false; // 防止重复处理
+  let _loginHandled = false;
 
   function handleLogin() {
     if (_loginHandled) return;
     if (!CFG.autoLogin) return;
     if (!CFG.username || !CFG.password) return;
 
-    const user = $('#txtUserName'), pass = $('#txtPassword'), btn = $('#btnLogin');
+    const user = document.querySelector('#txtUserName'),
+          pass = document.querySelector('#txtPassword'),
+          btn = document.querySelector('#btnLogin');
     if (!user || !pass || !btn) return;
 
-    const errEl = $('#MessageError');
+    const errEl = document.querySelector('#MessageError');
     if (errEl && errEl.textContent.trim()) return;
 
     _loginHandled = true;
     uLog('🔑 自动登录中...', 'ok');
 
     const needsFill = user.value !== CFG.username;
-    const delay = needsFill ? 300 : 100; // 无需填写时加快
+    const delay = needsFill ? 300 : 100;
 
     if (needsFill) {
       setTimeout(() => {
@@ -2106,7 +2108,8 @@
     }
 
     setTimeout(() => {
-      const captcha = $('#txtCapcha'), captchaWrap = $('#liCapcha');
+      const captcha = document.querySelector('#txtCapcha'),
+            captchaWrap = document.querySelector('#liCapcha');
       if (captcha && captchaWrap && getComputedStyle(captchaWrap).display !== 'none') {
         captchaWrap.style.border = '2px solid red';
         uLog('⚠️ 需要验证码，请手动填写', 'warn');
@@ -2117,18 +2120,17 @@
     }, needsFill ? 1000 : 500);
   }
 
-  // 立即尝试（整页刷新场景）
+  // 立即尝试（整页刷新 / 首次加载）
   handleLogin();
 
-  // 监听 DOM 变化，处理 SPA 导航到登录页的场景
-  if (!_loginHandled) {
-    const _loginObserver = new MutationObserver(() => {
-      if (!_loginHandled) handleLogin();
-    });
-    _loginObserver.observe(document.documentElement, { childList: true, subtree: true });
-    // 10 秒后停止监听（避免长期性能开销）
-    setTimeout(() => _loginObserver.disconnect(), 10000);
-  }
+  // 持续轮询检测登录表单（覆盖 SPA 导航、session 过期跳转等场景）
+  setInterval(() => {
+    // 登录表单消失 → 重置标记（允许下次出现时重新登录）
+    if (_loginHandled && !document.querySelector('#txtUserName')) {
+      _loginHandled = false;
+    }
+    if (!_loginHandled) handleLogin();
+  }, 1000);
 
   // 非答题/查看答案页静默退出
   if (!isAnswerPage() && !isViewPage()) return;
