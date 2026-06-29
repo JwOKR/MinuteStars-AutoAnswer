@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.12
+// @version      4.9.14
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1335,30 +1335,19 @@
     }
   }
 
-  /** 通用云端请求 */
+  /** 通用云端请求（跨域自动走 GM_xmlhttpRequest 绕过 CORS） */
   async function _cloudReq(method, url, body) {
     const hasBody = (method !== 'GET' && method !== 'HEAD');
     const headers = {};
     if (hasBody) headers['Content-Type'] = 'application/json';
     uLog('📡 云端请求: ' + method + ' ' + url.substring(0, 120), 'info');
 
-    if (typeof fetch !== 'undefined') {
-      uLog('🔧 使用 fetch', 'info');
-      const resp = await fetch(url, {
-        method,
-        headers,
-        body: hasBody ? body : undefined,
-      });
-      const text = await resp.text();
-      uLog('📥 fetch 响应: ' + resp.status + ' | ' + text.substring(0, 300), 'info');
-      if (resp.ok) return text;
-      let msg = 'HTTP ' + resp.status;
-      try { const j = JSON.parse(text); msg += ' - ' + (j.message || j.error || resp.statusText); } catch {}
-      throw new Error(msg);
-    }
+    // 判断是否跨域：Gitee API/raw 均与 pcs.minutestars.com 不同源
+    const isCrossOrigin = url.includes('gitee.com');
 
-    if (typeof GM_xmlhttpRequest !== 'undefined') {
-      uLog('🔧 使用 GM_xmlhttpRequest', 'info');
+    // 跨域请求用 GM_xmlhttpRequest（绕过 CORS），同源用 fetch
+    if (isCrossOrigin && typeof GM_xmlhttpRequest !== 'undefined') {
+      uLog('🔧 跨域，使用 GM_xmlhttpRequest', 'info');
       return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
           method, url, headers,
@@ -1378,6 +1367,21 @@
           data: body || undefined,
         });
       });
+    }
+
+    if (typeof fetch !== 'undefined') {
+      uLog('🔧 同源，使用 fetch', 'info');
+      const resp = await fetch(url, {
+        method,
+        headers,
+        body: hasBody ? body : undefined,
+      });
+      const text = await resp.text();
+      uLog('📥 fetch 响应: ' + resp.status + ' | ' + text.substring(0, 300), 'info');
+      if (resp.ok) return text;
+      let msg = 'HTTP ' + resp.status;
+      try { const j = JSON.parse(text); msg += ' - ' + (j.message || j.error || resp.statusText); } catch {}
+      throw new Error(msg);
     }
 
     throw new Error('无可用请求方式');

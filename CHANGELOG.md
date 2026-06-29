@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.14
+### 🐛 修复
+- **跨域 CORS 错误**：`_cloudReq` 对 `gitee.com` 请求改用 `GM_xmlhttpRequest`（绕过 CORS），同源请求保持 `fetch`
+
 ## v4.9.13
 ### 🐛 修复
 - **自动登录彻底重写**：`$()` 改为 `document.querySelector`（不依赖页面 jQuery）；MutationObserver 10s 超时改为 `setInterval` 持续轮询
