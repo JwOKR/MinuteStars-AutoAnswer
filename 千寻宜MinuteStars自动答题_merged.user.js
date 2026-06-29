@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.22
+// @version      4.9.23
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1157,9 +1157,9 @@
      ⚡ 公开可分享、国内网络快、读免认证
   ========================================================= */
 
-  /** v4.9.22 安全 Base64 编码（分块避免大题库栈溢出） */
-  function _stringToBase64(str) {
-    const bytes = new TextEncoder().encode(str);
+  /** v4.9.22 安全 Base64 编码（分块避免大题库栈溢出，支持 string 或 Uint8Array） */
+  function _toBase64(input) {
+    const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
     const len = bytes.length, CHUNK = 8192;
     const parts = [];
     for (let i = 0; i < len; i += CHUNK) {
@@ -1197,7 +1197,7 @@
     combined.set(salt, 0);
     combined.set(iv, salt.length);
     combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
-    return _ENC_PREFIX + btoa(String.fromCharCode(...combined));
+    return _ENC_PREFIX + _toBase64(combined);
   }
 
   /** 解密内容，自动检测是否加密 */
@@ -1298,7 +1298,7 @@
     }
 
     const payload = JSON.stringify({
-      content: _stringToBase64(finalContent),
+      content: _toBase64(finalContent),
       message: message,
       branch: CFG.cloudBranch,
       ...(sha ? { sha } : {}),

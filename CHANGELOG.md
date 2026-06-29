@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.23
+### 🐛 修复
+- **加密上传仍栈溢出** — `_encryptContent()` 中 `btoa(String.fromCharCode(...combined))` 同样存在展开运算符爆栈，统一为 `_toBase64()` 分块编码
+
 ## v4.9.22
 ### 🐛 修复
 - **Maximum call stack size exceeded** — 上传时 `String.fromCharCode(...Uint8Array)` 展开大题库导致栈溢出，改为 8KB 分块拼接
