@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.5
+// @version      4.9.6
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -5134,6 +5134,7 @@
   // 保存
   document.getElementById('cfg-save').addEventListener('click', () => {
     applySettingsFromUI();
+    saveCFG();
     const msg = document.getElementById('cfg-save-msg');
     if (msg) { msg.textContent = '✅ 设置已保存'; setTimeout(() => { msg.textContent = ''; }, 2500); }
     uLog('⚙ 设置已保存（模糊匹配:' + (CFG.fuzzyEnable ? '开 阈值' + Math.round(CFG.fuzzyThresh*100) + '%' : '关') + ' 自动登录:' + (CFG.autoLogin ? '开' : '关') + '）', 'ok');
