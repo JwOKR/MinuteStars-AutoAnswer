@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.8.48
+### 🐛 修复
+- **修复 Excel 导入日志导出按钮不显示**
+  - 之前按钮仅在 `debugLog` 有内容时显示，某些情况下 `window.__docxDebugLog` 为空导致按钮消失
+  - 现改为基于 `result` 数据（duplicates/errors/preview）构造导出内容，确保按钮始终显示
+  - 导出时优先使用 debugLog 详细日志，回退使用导入结果摘要
+
 ## v4.8.47
 ### ✨ 新功能
 - **Excel 导入也支持解析日志导出**
