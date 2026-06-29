@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.33
+// @version      4.9.34
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -5483,7 +5483,12 @@
   $('#ata-scan').addEventListener('click', debugScan);
   $('#ata-collect').addEventListener('click', collectAnswers);
   $('#ata-reset').addEventListener('click', () => {
-    $$('input').forEach(i => { i.checked = false; i.dispatchEvent(new Event('change', {bubbles:true})); });
+    // 只重置题目区域的 input（排除设置面板内的开关）
+    document.querySelectorAll('input').forEach(i => {
+      if (i.closest('#ata-panel')) return;
+      i.checked = false;
+      i.dispatchEvent(new Event('change', {bubbles:true}));
+    });
     $$('.ata-answered,.ata-no-match').forEach(e => e.classList.remove('ata-answered','ata-no-match'));
     setProgress(0, 1);
     setRunningStatus('等待开始', 'idle');

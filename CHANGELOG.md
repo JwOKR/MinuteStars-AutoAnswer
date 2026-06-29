@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.34
+### 🐛 修复
+- **重置按钮导致设置关闭** — `$$('input')` 误伤面板内开关，改为排除 `#ata-panel` 内的 input
+
 ## v4.9.33
 ### 🔧 变更
 - **快捷键默认关闭** — `shortcutsEnable` 默认值 `true` → `false`
