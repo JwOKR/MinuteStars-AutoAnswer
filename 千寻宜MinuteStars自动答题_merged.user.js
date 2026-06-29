@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.23
+// @version      4.9.24
 // @author       JIA
 // @match        *://*.minutestars.com/*
 // @match        *://*.xuexiqiangguo.cn/*
@@ -1465,7 +1465,7 @@
     }
   }
 
-  /** 通用云端请求（跨域自动走 GM_xmlhttpRequest 绕过 CORS） */
+  /** 通用云端请求（跨域自动走 GM 绕过 CORS） */
   async function _cloudReq(method, url, body) {
     const hasBody = (method !== 'GET' && method !== 'HEAD');
     const headers = {};
@@ -1475,28 +1475,38 @@
     // 判断是否跨域：Gitee API/raw 均与 pcs.minutestars.com 不同源
     const isCrossOrigin = url.includes('gitee.com');
 
-    // 跨域请求用 GM_xmlhttpRequest（绕过 CORS），同源用 fetch
-    if (isCrossOrigin && typeof GM_xmlhttpRequest !== 'undefined') {
-      uLog('🔧 跨域，使用 GM_xmlhttpRequest', 'info');
-      return new Promise((resolve, reject) => {
-        GM_xmlhttpRequest({
-          method, url, headers,
-          onload: x => {
-            uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0, 300), 'info');
-            if (x.status >= 200 && x.status < 300) resolve(x.responseText);
-            else {
-              let msg = 'HTTP ' + x.status;
-              try { const j = JSON.parse(x.responseText||'{}'); msg += ' - ' + (j.message||j.error||x.statusText); } catch {}
-              reject(new Error(msg));
-            }
-          },
-          onerror:  () => { uLog('❌ GM_xhr onerror', 'err'); reject(new Error('GM_xhr 网络错误')); },
-          ontimeout: () => { uLog('❌ GM_xhr timeout', 'err'); reject(new Error('GM_xhr 超时')); },
-          onabort: () => reject(new Error('GM_xhr 请求中止')),
-          timeout: 30000,
-          data: body || undefined,
+    // 跨域请求用 GM_xmlhttpRequest 或 GM.xmlHttpRequest（绕过 CORS）
+    if (isCrossOrigin) {
+      const GM_xhr = (typeof GM !== 'undefined' && GM.xmlHttpRequest) ? GM.xmlHttpRequest.bind(GM)
+                   : (typeof GM_xmlhttpRequest !== 'undefined') ? GM_xmlhttpRequest
+                   : null;
+      if (GM_xhr) {
+        uLog('🔧 跨域，使用 GM_xhr', 'info');
+        return new Promise((resolve, reject) => {
+          GM_xhr({
+            method, url, headers,
+            onload: x => {
+              uLog('📥 GM_xhr 响应: ' + x.status + ' | ' + (x.responseText||'').substring(0, 300), 'info');
+              if (x.status >= 200 && x.status < 300) resolve(x.responseText);
+              else {
+                let msg = 'HTTP ' + x.status;
+                try { const j = JSON.parse(x.responseText||'{}'); msg += ' - ' + (j.message||j.error||x.statusText); } catch {}
+                reject(new Error(msg));
+              }
+            },
+            onerror:  () => {
+              uLog('❌ GM_xhr onerror — 请检查 Tampermonkey 是否授权了 @connect gitee.com', 'err');
+              reject(new Error('GM_xhr 请求失败（请检查 @connect 权限）'));
+            },
+            ontimeout: () => { uLog('❌ GM_xhr timeout', 'err'); reject(new Error('GM_xhr 超时')); },
+            onabort: () => reject(new Error('GM_xhr 请求中止')),
+            timeout: 30000,
+            data: body || undefined,
+          });
         });
-      });
+      }
+      // 没有可用的 GM_xhr，无法跨域
+      throw new Error('无可用 GM_xmlhttpRequest（请确保已授权 @connect gitee.com 并在脚本头部声明）');
     }
 
     if (typeof fetch !== 'undefined') {

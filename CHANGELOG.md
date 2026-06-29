@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.24
+### 🐛 修复
+- **Edge 浏览器获取不到云端题库** — `_cloudReq` 只检测旧版 `GM_xmlhttpRequest`，Edge 版 Tampermonkey 可能只暴露 `GM.xmlHttpRequest`（命名空间 API），导致跨域请求不可用。现在同时支持两种 API 并给出明确错误提示
+
 ## v4.9.23
 ### 🐛 修复
 - **加密上传仍栈溢出** — `_encryptContent()` 中 `btoa(String.fromCharCode(...combined))` 同样存在展开运算符爆栈，统一为 `_toBase64()` 分块编码
