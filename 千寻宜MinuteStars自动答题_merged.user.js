@@ -4922,7 +4922,7 @@
     CFG.cloudRepoPath    = gVal('cfg-cloud-repo-path').trim() || 'law-of-order/MinuteStars-AutoAnswer';
     CFG.cloudBranch      = gVal('cfg-cloud-branch').trim() || 'main';
     CFG.cloudToken       = gVal('cfg-cloud-token').trim();
-    CFG.cloudReadMode    = gVal('cfg-cloud-read-mode') || 'local';
+    CFG.cloudReadMode    = gVal('cfg-cloud-read-mode') || 'cloud';
     CFG.compressEnable   = gChk('cfg-compress-enable');
     // 模式切换后刷新缓存
     _cache.dirty = true;

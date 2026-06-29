@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.8
+### 🔧 调整
+- `cloudReadMode` 保存 fallback 从 `'local'` 改为 `'cloud'`，与 CFG_DEFAULT 一致
+- 确保新用户/重置后默认直读云端答题
+
 ## v4.9.7
 ### 🔧 调整
 - 题库默认路径从 `tiku.json` 改为 `minutestars_qa.json`
