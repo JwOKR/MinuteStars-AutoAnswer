@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.18
+### ✨ 新增
+- **删除云端文件**：新增「🗑 删除云端」按钮，可删除 Gitee 仓库中的题库文件（需 Token + projects 权限）
+
 ## v4.9.17
 ### 🐛 修复
 - **题库上传后变成乱码**：`_writeRepoFile` 旧式 `btoa(unescape(encodeURIComponent(...)))` 编码和 `_readRepoFile` API 回退路径 `atob()` 解码均无法正确处理 UTF-8 中文。改用 `TextEncoder`/`TextDecoder` 标准 API
