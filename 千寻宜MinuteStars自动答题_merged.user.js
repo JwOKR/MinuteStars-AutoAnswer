@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.45
+// @version      4.9.46
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -5384,7 +5384,14 @@
     uLog('采集完成，新增/更新 ' + cnt + ' 条，跳过 ' + skip + ' 条', cnt > 0 ? 'ok' : 'warn');
     refreshLibCount();
     refreshStats();
-    if (cnt > 0) gmNotify('题库更新', '新增 ' + cnt + ' 条题目！');
+    if (cnt > 0) {
+      gmNotify('题库更新', '新增 ' + cnt + ' 条题目！');
+      // 自动同步到云端
+      if (CFG.cloudSyncEnable && CFG.cloudToken) {
+        uLog('⬆️ 正在同步到云端...', 'info');
+        await cloudUpload();
+      }
+    }
 
     // 如果有未找到答案的题目，显示调试面板
     const failed = debugLog.filter(d => d.answer === '(未找到)');
