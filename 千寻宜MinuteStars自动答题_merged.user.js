@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.40
+// @version      4.9.41
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -5319,17 +5319,19 @@
       const db  = LibraryManager.load();
       const nq  = cleanText(qText);
       const existKey = Object.keys(db).find(k => cleanText(k) === nq);
+      const qShort = qText.length > 40 ? qText.substring(0, 40) + '...' : qText;
       if (!existKey) {
         // 新题目，直接添加
         LibraryManager.add(qText, answer);
         cnt++;
+        uLog('✅ 新增：<b>' + escHtml(qShort) + '</b> → <span style="color:var(--nm-accent)">' + escHtml(answer) + '</span>', 'ok');
       } else if (db[existKey] !== answer) {
         // 题目已存在但答案不同，更新答案
         db[existKey] = answer;
         LibraryManager.save(db);
         _cache.dirty = true;
         cnt++;
-        uLog('🔄 已更新答案：' + qText.substring(0, 30) + '...', 'info');
+        uLog('🔄 更新：<b>' + escHtml(qShort) + '</b> → <span style="color:var(--nm-accent)">' + escHtml(answer) + '</span>', 'info');
       } else {
         skip++;
       }
