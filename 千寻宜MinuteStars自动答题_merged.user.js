@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.43
+// @version      4.9.44
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -5263,14 +5263,20 @@
     uLog('开始采集答案…', 'info');
     const containers = findQContainers();
     let cnt = 0, skip = 0;
-    containers.forEach(c => {
+    const debugLog = []; // 调试日志
+
+    containers.forEach((c, idx) => {
       const qText = getQText(c);
       if (!qText || qText.length < 4) { skip++; return; }
+      const qShort = qText.length > 50 ? qText.substring(0, 50) + '...' : qText;
 
       /** 策略一：MinuteStars 结果页结构（高优先级） */
       const refBadge = c.querySelector('.answer-badge.reference');
       let answer = null;
+      let method = '';
+
       if (refBadge) {
+        method = 'reference-badge';
         // 正确答案 = reference badge 后面紧邻的 .ml-l 元素
         let sibling = refBadge.nextElementSibling;
         while (sibling) {
@@ -5301,6 +5307,7 @@
 
       /** 策略二：其他批改页通用标记（无 reference badge 时退化） */
       if (!answer) {
+        method = 'input-mark';
         const inputs = Array.from(c.querySelectorAll('input[type="radio"],input[type="checkbox"]'));
         const correct = inputs.filter(i => {
           const p = i.closest('label,li,div,td,tr');
@@ -5325,13 +5332,36 @@
         }
       }
 
-      if (!answer) { skip++; return; }
+      /** 策略三：查找答案文本标记（如 "正确答案：A" 或 "答案：A,B"） */
+      if (!answer) {
+        method = 'text-search';
+        const allText = c.textContent || '';
+        // 匹配 "正确答案：X" 或 "答案：X" 模式
+        const ansMatch = allText.match(/(?:正确答案|正确选项|答案)[：:]\s*([A-Z](?:[,，\s]+[A-Z])*)/i);
+        if (ansMatch) {
+          answer = ansMatch[1].replace(/，/g, ',').replace(/\s+/g, '').toUpperCase();
+        }
+      }
+
+      // 记录调试信息
+      debugLog.push({
+        idx: idx + 1,
+        q: qShort,
+        method: method || 'none',
+        answer: answer || '(未找到)',
+        html: c.innerHTML.substring(0, 200)
+      });
+
+      if (!answer) {
+        skip++;
+        uLog('⚠️ 第' + (idx + 1) + '题未找到答案：<b>' + escHtml(qShort) + '</b>', 'warn');
+        return;
+      }
 
       // 去重 + 更新
       const db  = LibraryManager.load();
       const nq  = cleanText(qText);
       const existKey = Object.keys(db).find(k => cleanText(k) === nq);
-      const qShort = qText.length > 40 ? qText.substring(0, 40) + '...' : qText;
       if (!existKey) {
         // 新题目，直接添加
         LibraryManager.add(qText, answer);
@@ -5352,6 +5382,62 @@
     refreshLibCount();
     refreshStats();
     if (cnt > 0) gmNotify('题库更新', '新增 ' + cnt + ' 条题目！');
+
+    // 如果有未找到答案的题目，显示调试面板
+    const failed = debugLog.filter(d => d.answer === '(未找到)');
+    if (failed.length > 0) {
+      showCollectDebugPanel(debugLog);
+    }
+  }
+
+  /** 显示采集调试面板 */
+  function showCollectDebugPanel(log) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:2147483646;display:flex;align-items:center;justify-content:center';
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--nm-bg);border-radius:12px;padding:20px;width:700px;max-width:90vw;max-height:80vh;overflow:auto;box-shadow:12px 12px 24px var(--nm-shadow-dark),-12px -12px 24px var(--nm-shadow-light);position:relative';
+
+    let html = `
+      <div style="font-weight:600;font-size:14px;margin-bottom:12px">📋 采集调试日志</div>
+      <div style="font-size:11px;color:var(--nm-text-secondary);margin-bottom:12px">
+        共 ${log.length} 题，成功 ${log.filter(d => d.answer !== '(未找到)').length} 题，
+        失败 ${log.filter(d => d.answer === '(未找到)').length} 题
+      </div>
+      <div style="max-height:400px;overflow-y:auto">
+    `;
+
+    log.forEach(d => {
+      const isSuccess = d.answer !== '(未找到)';
+      const color = isSuccess ? '#48bb78' : '#f59e0b';
+      const icon = isSuccess ? '✅' : '⚠️';
+      html += `
+        <div style="background:var(--nm-bg);border-radius:8px;padding:8px;margin-bottom:6px;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:11px;font-weight:500">${icon} 第${d.idx}题</span>
+            <span style="font-size:10px;color:var(--nm-text-secondary)">策略: ${d.method || '无'}</span>
+          </div>
+          <div style="font-size:11px;margin-top:4px">${escHtml(d.q)}</div>
+          <div style="font-size:11px;margin-top:2px;color:${color};font-weight:600">
+            答案: ${escHtml(d.answer)}
+          </div>
+          ${!isSuccess ? `<details style="margin-top:4px"><summary style="font-size:10px;color:var(--nm-text-secondary);cursor:pointer">查看HTML</summary><pre style="font-size:9px;max-height:60px;overflow:auto;background:var(--nm-bg);padding:4px;border-radius:4px;margin-top:4px">${escHtml(d.html)}</pre></details>` : ''}
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+    box.innerHTML = html;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕ 关闭';
+    closeBtn.style.cssText = 'position:absolute;top:12px;right:12px;background:var(--nm-bg);border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light)';
+    closeBtn.onclick = () => overlay.remove();
+    box.appendChild(closeBtn);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
   }
 
   /* =========================================================
