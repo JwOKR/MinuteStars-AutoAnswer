@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.41
+// @version      4.9.42
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -1279,37 +1279,49 @@
   }
 
   /** 写入仓库文件（始终需要 Token） */
-  async function _writeRepoFile(filePath, content, message) {
+  async function _writeRepoFile(filePath, content, message, retries = 3) {
     const apiBase = repoApiUrl(filePath);
     const authParam = 'access_token=' + CFG.cloudToken;
-    // 先获取现有文件的 sha（用于更新）
-    let sha = '';
-    try {
-      const apiGetUrl = apiBase + '?' + authParam;
-      const resp = await _cloudReq('GET', apiGetUrl);
-      const data = JSON.parse(resp);
-      sha = data.sha || '';
-    } catch { /* 文件不存在，创建新文件 */ }
 
-    // 如果启用了加密，先加密内容
-    let finalContent = content;
-    if (CFG.cloudEncrypt) {
-      finalContent = await _encryptContent(content, _getEncryptKey());
-      uLog('🔒 内容已加密上传', 'info');
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        // 每次重试都重新获取 SHA
+        let sha = '';
+        try {
+          const apiGetUrl = apiBase + '?' + authParam;
+          const resp = await _cloudReq('GET', apiGetUrl);
+          const data = JSON.parse(resp);
+          sha = data.sha || '';
+        } catch { /* 文件不存在，创建新文件 */ }
+
+        // 如果启用了加密，先加密内容
+        let finalContent = content;
+        if (CFG.cloudEncrypt) {
+          finalContent = await _encryptContent(content, _getEncryptKey());
+          if (attempt === 1) uLog('🔒 内容已加密上传', 'info');
+        }
+
+        const payload = JSON.stringify({
+          content: _toBase64(finalContent),
+          message: message,
+          branch: CFG.cloudBranch,
+          ...(sha ? { sha } : {}),
+        });
+
+        // 新文件用 POST，已有文件用 PUT（都需要 sha）
+        const method = sha ? 'PUT' : 'POST';
+        const apiUrl = apiBase + '?' + authParam;
+        if (attempt === 1) uLog('📤 写入仓库文件: ' + filePath + ' (' + method + ')', 'info');
+        return await _cloudReq(method, apiUrl, payload);
+      } catch (e) {
+        if (e.message.includes('SHA') && attempt < retries) {
+          uLog('⚠️ SHA 冲突，重试 (' + attempt + '/' + retries + ')...', 'warn');
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        throw e;
+      }
     }
-
-    const payload = JSON.stringify({
-      content: _toBase64(finalContent),
-      message: message,
-      branch: CFG.cloudBranch,
-      ...(sha ? { sha } : {}),
-    });
-
-    // 新文件用 POST，已有文件用 PUT（都需要 sha）
-    const method = sha ? 'PUT' : 'POST';
-    const apiUrl = apiBase + '?' + authParam;
-    uLog('📤 写入仓库文件: ' + filePath + ' (' + method + ')' + (sha ? ' 更新' : ' 新建'), 'info');
-    return _cloudReq(method, apiUrl, payload);
   }
 
   /** 删除仓库文件 */
