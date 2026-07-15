@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.44
+// @version      4.9.45
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -5282,13 +5282,15 @@
         while (sibling) {
           if (sibling.classList && sibling.classList.contains('ml-l')) {
             const txt = (sibling.textContent || '').trim().toUpperCase();
-            if (/^[A-Z]$/.test(txt)) { answer = txt; break; }
+            // 匹配单个字母或多个字母（如 "A" 或 "ABC"）
+            if (/^[A-Z]+$/.test(txt)) { answer = txt.split('').join(','); break; }
             // .ml-l 里可能还有子 span，递归取直接文本
             const direct = Array.from(sibling.childNodes)
               .filter(n => n.nodeType === Node.TEXT_NODE)
               .map(n => n.textContent.trim().toUpperCase())
               .join('');
-            if (/[A-Z]/.test(direct)) { answer = direct.match(/[A-Z]/)[0]; break; }
+            const letters = direct.match(/[A-Z]/g);
+            if (letters) { answer = letters.join(','); break; }
           }
           sibling = sibling.nextElementSibling;
         }
@@ -5300,7 +5302,8 @@
               .filter(n => n.nodeType === Node.TEXT_NODE)
               .map(n => n.textContent.trim().toUpperCase())
               .join('');
-            if (/[A-Z]/.test(direct)) answer = direct.match(/[A-Z]/)[0];
+            const letters = direct.match(/[A-Z]/g);
+            if (letters) answer = letters.join(',');
           }
         }
       }
