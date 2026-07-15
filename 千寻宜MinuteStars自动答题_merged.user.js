@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.36
+// @version      4.9.37
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -2596,6 +2596,7 @@
         <div class="ata-tab" data-tab="bulk">📥 批量导入</div>
         <div class="ata-tab" data-tab="single">➕ 单条添加</div>
         <div class="ata-tab" data-tab="browse">🔍 浏览题库</div>
+        <div class="ata-tab" data-tab="cloud">☁ 云端题库</div>
         <div class="ata-tab" data-tab="tags">🏷️ 标签</div>
         <div class="ata-tab" data-tab="export">📤 导出</div>
         <div class="ata-tab" data-tab="import-shared">📥 导入分享</div>
@@ -2717,6 +2718,56 @@
             <button class="ata-btn" id="ata-batch-all" style="font-size:11px;padding:3px 8px;margin-left:8px">全选当页</button>
             <button class="ata-btn" id="ata-batch-none" style="font-size:11px;padding:3px 8px">取消</button>
             <button class="ata-btn red" id="ata-batch-delete" style="font-size:11px;padding:3px 8px">🗑 删除所选</button>
+          </div>
+        </div>
+
+        <!-- 云端题库管理面板 -->
+        <div class="ata-pane" id="pane-cloud">
+          <div class="ata-lib-format">
+            <b>☁ 云端题库管理</b><br>
+            直接查看和管理 Gitee 云端题库，无需先下载到本地<br>
+            <span style="color:var(--nm-text-secondary)">需要 Token 才能读写云端数据</span>
+          </div>
+          <div id="ata-cloud-status" style="margin-bottom:10px;font-size:12px;color:var(--nm-text-secondary)">
+            点击「加载云端题库」查看数据
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+            <button class="ata-btn green" id="ata-cloud-load" style="font-size:11px;padding:4px 10px">🔄 加载云端题库</button>
+            <button class="ata-btn" id="ata-cloud-refresh" style="font-size:11px;padding:4px 10px" disabled>↻ 刷新</button>
+            <span id="ata-cloud-count" style="font-size:11px;color:var(--nm-text-secondary)"></span>
+          </div>
+          <!-- 云端题库搜索和操作 -->
+          <div id="ata-cloud-controls" style="display:none">
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+              <div style="flex:1;min-width:130px;position:relative">
+                <input id="ata-cloud-search" placeholder="🔍 搜索云端题库" style="width:100%;box-sizing:border-box;padding-right:28px" />
+                <button id="ata-cloud-search-clear" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--nm-text-secondary);font-size:14px;padding:2px 4px;opacity:0.6" title="清除">✕</button>
+              </div>
+              <button class="ata-btn" id="ata-cloud-batch-toggle" style="font-size:11px;padding:4px 8px" title="批量选择">☑ 批量</button>
+            </div>
+            <div id="ata-cloud-scroll" style="overflow:auto;max-height:300px">
+              <table class="ata-lib-table">
+                <thead><tr id="ata-cloud-thead-row"><th>题目</th><th>答案</th><th>操作</th></tr></thead>
+                <tbody id="ata-cloud-tbody"></tbody>
+              </table>
+            </div>
+            <div class="ata-lib-pager">
+              <span id="ata-cloud-pager-info">共 0 条</span>
+              <div style="display:flex;gap:4px;align-items:center">
+                <button class="ata-btn" id="ata-cloud-pager-prev">◀</button>
+                <input id="ata-cloud-pager-jump" type="number" min="1" placeholder="页码" style="width:50px;padding:4px;border-radius:var(--nm-radius);border:none;background:var(--nm-bg);color:var(--nm-text);text-align:center;box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light)" />
+                <button class="ata-btn" id="ata-cloud-pager-jump-btn">跳转</button>
+                <button class="ata-btn" id="ata-cloud-pager-next">▶</button>
+              </div>
+            </div>
+            <!-- 批量操作栏 -->
+            <div id="ata-cloud-batch-bar" style="display:none;margin-top:8px;padding:8px 12px;background:var(--nm-bg);border-radius:var(--nm-radius);box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light);font-size:12px">
+              <span id="ata-cloud-batch-count">已选 0 条</span>
+              <button class="ata-btn" id="ata-cloud-batch-all" style="font-size:11px;padding:3px 8px;margin-left:8px">全选当页</button>
+              <button class="ata-btn" id="ata-cloud-batch-none" style="font-size:11px;padding:3px 8px">取消</button>
+              <button class="ata-btn red" id="ata-cloud-batch-delete" style="font-size:11px;padding:3px 8px">🗑 删除所选</button>
+              <button class="ata-btn green" id="ata-cloud-batch-sync" style="font-size:11px;padding:3px 8px">⬆ 同步到本地</button>
+            </div>
           </div>
         </div>
 
@@ -4548,6 +4599,240 @@
     refreshLibCount(); refreshStats(); renderBrowse(currentPage);
     uLog('🗑 已批量删除选中题目', 'info');
   });
+
+  /* =========================================================
+     云端题库管理
+  ========================================================= */
+  let _cloudDB = null;       // 云端题库数据
+  let _cloudPage = 1;
+  const CLOUD_PAGE_SIZE = 20;
+  let _cloudBatchMode = false;
+  let _cloudBatchSelected = new Set();
+  let _cloudSearchT = null;
+
+  // 加载云端题库
+  async function loadCloudDB() {
+    const statusEl = $c('#ata-cloud-status');
+    const countEl = $c('#ata-cloud-count');
+    const controlsEl = $c('#ata-cloud-controls');
+    const refreshBtn = $c('#ata-cloud-refresh');
+
+    if (!CFG.cloudSyncEnable || !CFG.cloudToken) {
+      if (statusEl) statusEl.textContent = '⚠️ 请先在设置中填写 Token 并开启云同步';
+      return;
+    }
+
+    if (statusEl) statusEl.textContent = '⏳ 正在加载云端题库...';
+    try {
+      const raw = await _readRepoFile(CFG.cloudFilePath);
+      _cloudDB = JSON.parse(raw);
+      const count = Object.keys(_cloudDB).length;
+      if (statusEl) statusEl.textContent = '✅ 云端题库已加载';
+      if (countEl) countEl.textContent = '共 ' + count + ' 条';
+      if (controlsEl) controlsEl.style.display = '';
+      if (refreshBtn) refreshBtn.disabled = false;
+      renderCloudBrowse(1);
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '❌ 加载失败: ' + e.message;
+      _cloudDB = null;
+    }
+  }
+
+  // 渲染云端题库浏览
+  function renderCloudBrowse(page) {
+    if (!_cloudDB) return;
+    _cloudPage = page;
+    const searchEl = $c('#ata-cloud-search');
+    const keyword = searchEl ? searchEl.value : '';
+    let entries = Object.entries(_cloudDB);
+
+    // 搜索过滤
+    if (keyword) {
+      const kw = keyword.toLowerCase();
+      entries = entries.filter(([q]) => q.toLowerCase().includes(kw));
+    }
+
+    const total = entries.length;
+    const start = (page - 1) * CLOUD_PAGE_SIZE;
+    const slice = entries.slice(start, start + CLOUD_PAGE_SIZE);
+    const tbody = $c('#ata-cloud-tbody');
+    if (!tbody) return;
+
+    const frag = document.createDocumentFragment();
+    if (!slice.length) {
+      const tr = document.createElement('tr');
+      const cols = _cloudBatchMode ? 4 : 3;
+      tr.innerHTML = '<td colspan="' + cols + '" style="text-align:center;color:var(--nm-text-secondary);padding:20px">没有匹配的题目</td>';
+      frag.appendChild(tr);
+    }
+    slice.forEach(([q, a]) => {
+      const tr = document.createElement('tr');
+      const cb = _cloudBatchMode ? '<td style="width:30px;text-align:center"><input type="checkbox" class="ata-cloud-batch-cb" data-q="' + escHtml(q) + '" ' + (_cloudBatchSelected.has(q) ? 'checked' : '') + '></td>' : '';
+      tr.innerHTML = cb
+        + '<td class="q-cell">' + escHtml(q.substring(0, 100)) + (q.length > 100 ? '...' : '') + '</td>'
+        + '<td style="color:var(--nm-accent);font-weight:bold">' + escHtml(String(a)) + '</td>'
+        + '<td><button class="del-btn ata-cloud-del" data-q="' + escHtml(q) + '">删除</button></td>';
+      frag.appendChild(tr);
+    });
+    tbody.innerHTML = '';
+    tbody.appendChild(frag);
+
+    // 更新分页
+    const totalPages = Math.max(1, Math.ceil(total / CLOUD_PAGE_SIZE));
+    const pagerInfo = $c('#ata-cloud-pager-info');
+    if (pagerInfo) pagerInfo.textContent = '共 ' + total + ' 条，第 ' + page + '/' + totalPages + ' 页';
+    const prevBtn = $c('#ata-cloud-pager-prev');
+    const nextBtn = $c('#ata-cloud-pager-next');
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
+
+    // 更新表头
+    updateCloudBatchHeader();
+  }
+
+  function updateCloudBatchHeader() {
+    const row = $c('#ata-cloud-thead-row');
+    if (!row) return;
+    if (_cloudBatchMode) {
+      if (!row.querySelector('.ata-cloud-batch-th')) {
+        const th = document.createElement('th');
+        th.className = 'ata-cloud-batch-th';
+        th.style.cssText = 'width:30px;text-align:center';
+        th.innerHTML = '<input type="checkbox" id="ata-cloud-batch-select-all" title="全选/取消">';
+        row.insertBefore(th, row.firstChild);
+      }
+    } else {
+      const th = row.querySelector('.ata-cloud-batch-th');
+      if (th) th.remove();
+    }
+    const bar = $c('#ata-cloud-batch-bar');
+    if (bar) bar.style.display = _cloudBatchMode ? '' : 'none';
+    updateCloudBatchCount();
+  }
+
+  function updateCloudBatchCount() {
+    const el = $c('#ata-cloud-batch-count');
+    if (el) el.textContent = '已选 ' + _cloudBatchSelected.size + ' 条';
+  }
+
+  // 事件绑定
+  $c('#ata-cloud-load')?.addEventListener('click', loadCloudDB);
+  $c('#ata-cloud-refresh')?.addEventListener('click', loadCloudDB);
+
+  // 搜索
+  $c('#ata-cloud-search')?.addEventListener('input', () => {
+    clearTimeout(_cloudSearchT);
+    _cloudSearchT = setTimeout(() => renderCloudBrowse(1), 300);
+  });
+  $c('#ata-cloud-search-clear')?.addEventListener('click', () => {
+    const el = $c('#ata-cloud-search');
+    if (el) { el.value = ''; el.focus(); renderCloudBrowse(1); }
+  });
+
+  // 分页
+  $c('#ata-cloud-pager-prev')?.addEventListener('click', () => { if (_cloudPage > 1) renderCloudBrowse(_cloudPage - 1); });
+  $c('#ata-cloud-pager-next')?.addEventListener('click', () => renderCloudBrowse(_cloudPage + 1));
+  $c('#ata-cloud-pager-jump-btn')?.addEventListener('click', () => {
+    const jumpPage = parseInt($c('#ata-cloud-pager-jump')?.value);
+    if (_cloudDB && jumpPage >= 1) {
+      const totalPages = Math.max(1, Math.ceil(Object.keys(_cloudDB).length / CLOUD_PAGE_SIZE));
+      if (jumpPage <= totalPages) renderCloudBrowse(jumpPage);
+    }
+  });
+
+  // 单条删除
+  $c('#ata-cloud-tbody')?.addEventListener('click', async e => {
+    if (e.target.classList.contains('ata-cloud-del')) {
+      const q = e.target.dataset.q;
+      if (!confirm('⚠️ 确定从云端删除？\n\n' + q.substring(0, 80))) return;
+      delete _cloudDB[q];
+      await saveCloudDB();
+      renderCloudBrowse(_cloudPage);
+    }
+    // 批量选择
+    if (e.target.classList.contains('ata-cloud-batch-cb')) {
+      const q = e.target.dataset.q;
+      if (e.target.checked) _cloudBatchSelected.add(q); else _cloudBatchSelected.delete(q);
+      updateCloudBatchCount();
+    }
+  });
+  // 全选当页
+  $c('#ata-cloud-tbody')?.addEventListener('change', e => {
+    if (e.target.id === 'ata-cloud-batch-select-all') {
+      const cbs = document.querySelectorAll('.ata-cloud-batch-cb');
+      cbs.forEach(cb => {
+        cb.checked = e.target.checked;
+        if (cb.checked) _cloudBatchSelected.add(cb.dataset.q); else _cloudBatchSelected.delete(cb.dataset.q);
+      });
+      updateCloudBatchCount();
+    }
+  });
+
+  // 批量模式切换
+  $c('#ata-cloud-batch-toggle')?.addEventListener('click', function() {
+    _cloudBatchMode = !_cloudBatchMode;
+    this.className = _cloudBatchMode ? 'ata-btn green' : 'ata-btn';
+    if (!_cloudBatchMode) _cloudBatchSelected.clear();
+    renderCloudBrowse(_cloudPage);
+  });
+
+  // 批量操作
+  $c('#ata-cloud-batch-all')?.addEventListener('click', () => {
+    const cbs = document.querySelectorAll('.ata-cloud-batch-cb');
+    cbs.forEach(cb => { cb.checked = true; _cloudBatchSelected.add(cb.dataset.q); });
+    updateCloudBatchCount();
+  });
+  $c('#ata-cloud-batch-none')?.addEventListener('click', () => {
+    const cbs = document.querySelectorAll('.ata-cloud-batch-cb');
+    cbs.forEach(cb => { cb.checked = false; });
+    _cloudBatchSelected.clear();
+    updateCloudBatchCount();
+  });
+  $c('#ata-cloud-batch-delete')?.addEventListener('click', async () => {
+    if (!_cloudBatchSelected.size || !_cloudDB) return;
+    if (!confirm('⚠️ 确定从云端删除选中的 ' + _cloudBatchSelected.size + ' 条题目？')) return;
+    for (const q of _cloudBatchSelected) {
+      delete _cloudDB[q];
+    }
+    await saveCloudDB();
+    _cloudBatchSelected.clear();
+    renderCloudBrowse(_cloudPage);
+    uLog('🗑 已从云端批量删除 ' + _cloudBatchSelected.size + ' 条题目', 'info');
+  });
+  $c('#ata-cloud-batch-sync')?.addEventListener('click', async () => {
+    if (!_cloudBatchSelected.size || !_cloudDB) return;
+    const db = LibraryManager.load();
+    let added = 0;
+    for (const q of _cloudBatchSelected) {
+      if (_cloudDB[q] && !db[q]) {
+        db[q] = _cloudDB[q];
+        added++;
+      }
+    }
+    await LibraryManager.save(db);
+    _cache.dirty = true;
+    refreshLibCount();
+    refreshStats();
+    uLog('✅ 已同步 ' + added + ' 条到本地题库', 'ok');
+    _cloudBatchSelected.clear();
+    renderCloudBrowse(_cloudPage);
+  });
+
+  // 保存云端题库
+  async function saveCloudDB() {
+    if (!_cloudDB) return;
+    const statusEl = $c('#ata-cloud-status');
+    if (statusEl) statusEl.textContent = '⏳ 正在保存到云端...';
+    try {
+      const content = JSON.stringify(_cloudDB, null, 2);
+      await _writeRepoFile(CFG.cloudFilePath, content, '题库管理编辑 ' + new Date().toLocaleString());
+      if (statusEl) statusEl.textContent = '✅ 已保存到云端';
+      const countEl = $c('#ata-cloud-count');
+      if (countEl) countEl.textContent = '共 ' + Object.keys(_cloudDB).length + ' 条';
+    } catch (e) {
+      if (statusEl) statusEl.textContent = '❌ 保存失败: ' + e.message;
+    }
+  }
 
   /* =========================================================
      答题核心逻辑
