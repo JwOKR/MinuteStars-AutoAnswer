@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.35
+// @version      4.9.36
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -2607,7 +2607,7 @@
             <div class="ata-stat-card"><div class="num" id="stat-total">0</div><div class="lab">题库总数</div></div>
             <div class="ata-stat-card"><div class="num" id="stat-single">0</div><div class="lab">单选/判断</div></div>
             <div class="ata-stat-card"><div class="num" id="stat-multi">0</div><div class="lab">多选题</div></div>
-            <div class="ata-stat-card"><div class="num" id="stat-user">0</div><div class="lab">题库总数</div></div>
+            <div class="ata-stat-card"><div class="num" id="stat-user">0</div><div class="lab">本地题库</div></div>
           </div>
           <!-- 题库来源分布饼图 -->
           <div class="ata-source-chart" id="ata-source-chart">
@@ -2634,8 +2634,9 @@
         <div class="ata-pane" id="pane-bulk">
           <div class="ata-lib-format">
             <b>支持格式（每行一条）：</b><br>
-            <code>题目||答案</code> 或 <code>题目|答案</code><br>
-            多选：<code>A,B,C</code>；判断：<code>true</code> / <code>false</code>
+            <code>题目||答案</code>（推荐）或 <code>题目|答案</code><br>
+            多选答案用逗号分隔：<code>A,B,C</code>；判断题：<code>true</code> / <code>false</code><br>
+            <span style="color:var(--nm-text-secondary)">支持 .txt / .json / .csv / .docx / .xlsx 文件导入</span>
           </div>
           <textarea class="ata-lib-textarea" id="ata-bulk-text" placeholder="粘贴题库内容...&#10;示例：&#10;出差补助按地区划分为三类，正确的是？||A,B,C"></textarea>
           <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -2668,19 +2669,23 @@
 
         <div class="ata-pane" id="pane-browse">
           <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
-            <input id="ata-lib-search" placeholder="🔍 搜索（支持正则 / 关键词）" style="flex:1;min-width:130px" />
-            <label style="font-size:11px;color:#aaa;white-space:nowrap">
+            <div style="flex:1;min-width:130px;position:relative">
+              <input id="ata-lib-search" placeholder="🔍 搜索（支持正则 / 关键词）" style="width:100%;box-sizing:border-box;padding-right:28px" />
+              <button id="ata-lib-search-clear" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--nm-text-secondary);font-size:14px;padding:2px 4px;opacity:0.6" title="清除">✕</button>
+            </div>
+            <label style="font-size:11px;color:var(--nm-text-secondary);white-space:nowrap">
               <input type="checkbox" id="ata-lib-regex" style="vertical-align:middle" title="启用正则表达式"> 正则
             </label>
+            <button class="ata-btn" id="ata-lib-batch-toggle" style="font-size:11px;padding:4px 8px" title="批量选择">☑ 批量</button>
           </div>
           <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
-            <select id="ata-lib-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
+            <select id="ata-lib-filter" style="padding:4px 8px;border-radius:var(--nm-radius);border:none;background:var(--nm-bg);color:var(--nm-text);font-size:11px;box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light);display:none">
               <option value="all">全部题目</option>
             </select>
-            <select id="ata-lib-tag-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
+            <select id="ata-lib-tag-filter" style="padding:4px 8px;border-radius:var(--nm-radius);border:none;background:var(--nm-bg);color:var(--nm-text);font-size:11px;box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light)">
               <option value="">全部标签</option>
             </select>
-            <select id="ata-lib-ans-filter" style="padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;font-size:11px">
+            <select id="ata-lib-ans-filter" style="padding:4px 8px;border-radius:var(--nm-radius);border:none;background:var(--nm-bg);color:var(--nm-text);font-size:11px;box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light)">
               <option value="">全部答案</option>
               <option value="A">仅 A</option>
               <option value="B">仅 B</option>
@@ -2693,7 +2698,7 @@
           </div>
           <div id="ata-lib-scroll" style="overflow:auto;max-height:380px">
             <table class="ata-lib-table">
-              <thead><tr><th>题目</th><th>答案</th><th>操作</th></tr></thead>
+              <thead><tr id="ata-lib-thead-row"><th>题目</th><th>答案</th><th>操作</th></tr></thead>
               <tbody id="ata-lib-tbody"></tbody>
             </table>
           </div>
@@ -2701,10 +2706,17 @@
             <span id="ata-pager-info">共 0 条</span>
             <div style="display:flex;gap:4px;align-items:center">
               <button class="ata-btn" id="ata-pager-prev">◀</button>
-              <input id="ata-pager-jump" type="number" min="1" placeholder="页码" style="width:50px;padding:4px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;text-align:center" />
+              <input id="ata-pager-jump" type="number" min="1" placeholder="页码" style="width:50px;padding:4px;border-radius:var(--nm-radius);border:none;background:var(--nm-bg);color:var(--nm-text);text-align:center;box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light)" />
               <button class="ata-btn" id="ata-pager-jump-btn">跳转</button>
               <button class="ata-btn" id="ata-pager-next">▶</button>
             </div>
+          </div>
+          <!-- 批量操作栏 -->
+          <div id="ata-batch-bar" style="display:none;margin-top:8px;padding:8px 12px;background:var(--nm-bg);border-radius:var(--nm-radius);box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light);font-size:12px">
+            <span id="ata-batch-count">已选 0 条</span>
+            <button class="ata-btn" id="ata-batch-all" style="font-size:11px;padding:3px 8px;margin-left:8px">全选当页</button>
+            <button class="ata-btn" id="ata-batch-none" style="font-size:11px;padding:3px 8px">取消</button>
+            <button class="ata-btn red" id="ata-batch-delete" style="font-size:11px;padding:3px 8px">🗑 删除所选</button>
           </div>
         </div>
 
@@ -2725,7 +2737,7 @@
             </div>
             <div class="ata-tag-questions">
               <div class="ata-tag-q-input">
-                <input type="text" id="ata-tag-q-search" placeholder="输入题目标题搜索..." style="width:100%;padding:8px;border-radius:8px;border:1px solid #ccc;box-sizing:border-box">
+                <input type="text" id="ata-tag-q-search" placeholder="输入题目标题搜索..." style="width:100%;padding:8px;border-radius:var(--nm-radius);border:none;background:var(--nm-bg);color:var(--nm-text);box-sizing:border-box;box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light)">
               </div>
               <div class="ata-tag-q-results" id="ata-tag-q-results">
                 <div class="ata-tags-empty">输入上方搜索框查找题目</div>
@@ -2774,7 +2786,7 @@
             <small style="color:#888">示例：https://gitee.com/law-of-order/MinuteStars-AutoAnswer/raw/main/tiku_share_xxx.json</small>
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin:12px 0">
-            <input type="text" id="ata-import-shared-id" placeholder="粘贴分享链接或仓库路径" style="flex:1;padding:8px;border-radius:8px;border:1px solid #444;background:#2a2a2a;color:#e0e0e0;">
+            <input type="text" id="ata-import-shared-id" placeholder="粘贴分享链接或仓库路径" style="flex:1;padding:8px;border-radius:var(--nm-radius);border:none;background:var(--nm-bg);color:var(--nm-text);box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light)">
             <button class="ata-btn green" id="ata-do-import-shared">📥 导入</button>
           </div>
           <div id="ata-import-shared-msg" style="font-size:12px;color:#aaa"></div>
@@ -4313,22 +4325,58 @@
     if (!tbody) return;
     const start = (page - 1) * PAGE_SIZE;
     const slice = entries.slice(start, start + PAGE_SIZE);
+    const batchMode = _batchMode;
     const frag = document.createDocumentFragment();
     if (!slice.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="3" style="text-align:center;color:#666;padding:20px">没有匹配的题目</td>';
+      const cols = batchMode ? 4 : 3;
+      tr.innerHTML = '<td colspan="' + cols + '" style="text-align:center;color:var(--nm-text-secondary);padding:20px">没有匹配的题目</td>';
       frag.appendChild(tr);
     }
     slice.forEach(([q, a]) => {
       const qHtml = _highlight(q, keyword, useRegex);
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td class="q-cell">' + qHtml + '</td>'
-        + '<td style="color:#ffa726;font-weight:bold">' + escHtml(String(a)) + '</td>'
+      const cb = batchMode ? '<td style="width:30px;text-align:center"><input type="checkbox" class="ata-batch-cb" data-q="' + escHtml(q) + '" ' + (_batchSelected.has(q) ? 'checked' : '') + '></td>' : '';
+      tr.innerHTML = cb
+        + '<td class="q-cell">' + qHtml + '</td>'
+        + '<td style="color:var(--nm-accent);font-weight:bold">' + escHtml(String(a)) + '</td>'
         + '<td><button class="del-btn" data-q="' + escHtml(q) + '">删除</button></td>';
       frag.appendChild(tr);
     });
     tbody.innerHTML = '';
     tbody.appendChild(frag);
+    // 更新表头
+    updateBatchHeader();
+  }
+
+  /* ---- 批量选择模式 ---- */
+  let _batchMode = false;
+  let _batchSelected = new Set();
+
+  function updateBatchHeader() {
+    const row = $c('#ata-lib-thead-row');
+    if (!row) return;
+    if (_batchMode) {
+      if (!row.querySelector('.ata-batch-th')) {
+        const th = document.createElement('th');
+        th.className = 'ata-batch-th';
+        th.style.cssText = 'width:30px;text-align:center';
+        th.innerHTML = '<input type="checkbox" id="ata-batch-select-all" title="全选/取消">';
+        row.insertBefore(th, row.firstChild);
+      }
+    } else {
+      const th = row.querySelector('.ata-batch-th');
+      if (th) th.remove();
+    }
+    // 更新批量操作栏
+    const bar = $c('#ata-batch-bar');
+    if (bar) bar.style.display = _batchMode ? '' : 'none';
+    updateBatchCount();
+  }
+
+  function updateBatchCount() {
+    const el = $c('#ata-batch-count');
+    if (el) el.textContent = '已选 ' + _batchSelected.size + ' 条';
   }
   /* ---- 提取：渲染分页控件 ---- */
   function renderPager(total, page) {
@@ -4338,6 +4386,9 @@
     $c('#ata-pager-next').disabled = (page - 1) * PAGE_SIZE + PAGE_SIZE >= total;
     $c('#ata-pager-jump').max = totalPages;
   }
+
+  let _randomCache = null; // 缓存随机排序结果，翻页时保持一致
+  let _randomCacheKey = ''; // 缓存的筛选条件指纹
 
   function renderBrowse(page) {
     currentPage = page;
@@ -4366,12 +4417,6 @@
         entries = entries.filter(([q]) => q.toLowerCase().includes(kw));
       }
     }
-    // ── 分类过滤 ──
-    entries = entries.filter(([q]) => {
-      if (filter === 'builtin') return false;
-      if (filter === 'user')    return true;
-      return true;
-    });
     // ── 标签过滤 ──
     if (tagFilter) {
       entries = entries.filter(([q]) => {
@@ -4388,9 +4433,17 @@
         return String(a).includes(ansFilter);
       });
     }
-    // ── 随机模式 ──
+    // ── 随机模式（缓存结果，翻页时保持一致） ──
     if ($c('#ata-lib-random')?.dataset.random === '1') {
-      entries = [...entries].sort(() => Math.random() - 0.5);
+      const cacheKey = keyword + '|' + filter + '|' + tagFilter + '|' + ansFilter + '|' + entries.length;
+      if (_randomCacheKey !== cacheKey || !_randomCache) {
+        _randomCache = [...entries].sort(() => Math.random() - 0.5);
+        _randomCacheKey = cacheKey;
+      }
+      entries = _randomCache;
+    } else {
+      _randomCache = null;
+      _randomCacheKey = '';
     }
 
     const total   = entries.length;
@@ -4439,6 +4492,61 @@
       LibraryManager.remove(e.target.dataset.q);
       refreshLibCount(); refreshStats(); renderBrowse(currentPage);
     }
+    // 批量选择复选框
+    if (e.target.classList.contains('ata-batch-cb')) {
+      const q = e.target.dataset.q;
+      if (e.target.checked) _batchSelected.add(q); else _batchSelected.delete(q);
+      updateBatchCount();
+    }
+  });
+  // 全选当页复选框
+  $c('#ata-lib-tbody')?.addEventListener('change', e => {
+    if (e.target.id === 'ata-batch-select-all') {
+      const cbs = document.querySelectorAll('.ata-batch-cb');
+      cbs.forEach(cb => {
+        cb.checked = e.target.checked;
+        if (cb.checked) _batchSelected.add(cb.dataset.q); else _batchSelected.delete(cb.dataset.q);
+      });
+      updateBatchCount();
+    }
+  });
+
+  // 搜索清除按钮
+  $c('#ata-lib-search-clear')?.addEventListener('click', () => {
+    const el = $c('#ata-lib-search');
+    if (el) { el.value = ''; el.focus(); renderBrowse(1); }
+  });
+
+  // 批量模式切换
+  $c('#ata-lib-batch-toggle')?.addEventListener('click', function() {
+    _batchMode = !_batchMode;
+    this.textContent = _batchMode ? '☑ 批量' : '☑ 批量';
+    this.className = _batchMode ? 'ata-btn green' : 'ata-btn';
+    if (!_batchMode) _batchSelected.clear();
+    renderBrowse(currentPage);
+  });
+
+  // 批量操作按钮
+  $c('#ata-batch-all')?.addEventListener('click', () => {
+    const cbs = document.querySelectorAll('.ata-batch-cb');
+    cbs.forEach(cb => { cb.checked = true; _batchSelected.add(cb.dataset.q); });
+    updateBatchCount();
+  });
+  $c('#ata-batch-none')?.addEventListener('click', () => {
+    const cbs = document.querySelectorAll('.ata-batch-cb');
+    cbs.forEach(cb => { cb.checked = false; });
+    _batchSelected.clear();
+    updateBatchCount();
+  });
+  $c('#ata-batch-delete')?.addEventListener('click', async () => {
+    if (!_batchSelected.size) return;
+    if (!confirm('⚠️ 确定删除选中的 ' + _batchSelected.size + ' 条题目？')) return;
+    for (const q of _batchSelected) {
+      await LibraryManager.remove(q);
+    }
+    _batchSelected.clear();
+    refreshLibCount(); refreshStats(); renderBrowse(currentPage);
+    uLog('🗑 已批量删除选中题目', 'info');
   });
 
   /* =========================================================
