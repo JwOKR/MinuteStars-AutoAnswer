@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.37
+// @version      4.9.38
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -2166,16 +2166,55 @@
     .ata-lib-table .del-btn{
       background:var(--nm-bg);color:var(--nm-danger);border:none;
       border-radius:var(--nm-radius);padding:4px 10px;cursor:pointer;font-size:11px;
-      box-shadow: 
+      box-shadow:
         2px 2px 4px var(--nm-shadow-dark),
         -2px -2px 4px var(--nm-shadow-light);
       transition:box-shadow .15s;
     }
     .ata-lib-table .del-btn:hover{
-      box-shadow: 
+      box-shadow:
         inset 2px 2px 4px var(--nm-shadow-dark),
         inset -2px -2px 4px var(--nm-shadow-light);
     }
+    .ata-lib-table .ata-edit-btn{
+      background:var(--nm-bg);color:var(--nm-accent);border:none;
+      border-radius:var(--nm-radius);padding:4px 8px;cursor:pointer;font-size:11px;
+      box-shadow:
+        2px 2px 4px var(--nm-shadow-dark),
+        -2px -2px 4px var(--nm-shadow-light);
+      transition:box-shadow .15s;
+    }
+    .ata-lib-table .ata-edit-btn:hover{
+      box-shadow:
+        inset 2px 2px 4px var(--nm-shadow-dark),
+        inset -2px -2px 4px var(--nm-shadow-light);
+    }
+    /* 编辑弹窗 */
+    #ata-edit-modal{
+      position:fixed;top:0;left:0;right:0;bottom:0;
+      background:rgba(0,0,0,.5);z-index:1000000;
+      display:none;align-items:center;justify-content:center;
+    }
+    #ata-edit-modal.show{display:flex;}
+    #ata-edit-box{
+      background:var(--nm-bg);border-radius:var(--nm-radius-lg);
+      padding:20px;width:500px;max-width:90vw;max-height:80vh;
+      box-shadow:12px 12px 24px var(--nm-shadow-dark),-12px -12px 24px var(--nm-shadow-light);
+    }
+    #ata-edit-box h3{margin:0 0 16px;font-size:15px;color:var(--nm-text)}
+    #ata-edit-box textarea{
+      width:100%;min-height:80px;padding:10px;border-radius:var(--nm-radius);
+      border:none;background:var(--nm-bg);color:var(--nm-text);font-size:13px;
+      box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light);
+      box-sizing:border-box;resize:vertical;
+    }
+    #ata-edit-box input{
+      width:100%;padding:10px;border-radius:var(--nm-radius);
+      border:none;background:var(--nm-bg);color:var(--nm-text);font-size:13px;
+      box-shadow:inset 2px 2px 4px var(--nm-shadow-dark),inset -2px -2px 4px var(--nm-shadow-light);
+      box-sizing:border-box;
+    }
+    .ata-edit-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
     #ata-lib-search{
       width:100%;
       background:var(--nm-bg);
@@ -2849,6 +2888,27 @@
 
   document.body.appendChild(modal);
 
+  // 编辑弹窗
+  const editModal = document.createElement('div');
+  editModal.id = 'ata-edit-modal';
+  editModal.innerHTML = `
+    <div id="ata-edit-box">
+      <h3>✏️ 编辑题目</h3>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:var(--nm-text-secondary);display:block;margin-bottom:4px">题目</label>
+        <textarea id="ata-edit-q" placeholder="题目内容"></textarea>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:var(--nm-text-secondary);display:block;margin-bottom:4px">答案</label>
+        <input id="ata-edit-a" placeholder="答案（如 A、A,B,C、true）" />
+      </div>
+      <div class="ata-edit-actions">
+        <button class="ata-btn" id="ata-edit-cancel">取消</button>
+        <button class="ata-btn green" id="ata-edit-save">💾 保存</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(editModal);
 
   /* =========================================================
      题库管理 UI 逻辑
@@ -4391,7 +4451,7 @@
       tr.innerHTML = cb
         + '<td class="q-cell">' + qHtml + '</td>'
         + '<td style="color:var(--nm-accent);font-weight:bold">' + escHtml(String(a)) + '</td>'
-        + '<td><button class="del-btn" data-q="' + escHtml(q) + '">删除</button></td>';
+        + '<td><button class="ata-edit-btn" data-q="' + escHtml(q) + '" title="编辑">✏️</button> <button class="del-btn" data-q="' + escHtml(q) + '">删除</button></td>';
       frag.appendChild(tr);
     });
     tbody.innerHTML = '';
@@ -4543,6 +4603,10 @@
       LibraryManager.remove(e.target.dataset.q);
       refreshLibCount(); refreshStats(); renderBrowse(currentPage);
     }
+    // 编辑按钮
+    if (e.target.classList.contains('ata-edit-btn')) {
+      openEditModal(e.target.dataset.q);
+    }
     // 批量选择复选框
     if (e.target.classList.contains('ata-batch-cb')) {
       const q = e.target.dataset.q;
@@ -4598,6 +4662,54 @@
     _batchSelected.clear();
     refreshLibCount(); refreshStats(); renderBrowse(currentPage);
     uLog('🗑 已批量删除选中题目', 'info');
+  });
+
+  /* =========================================================
+     编辑题目弹窗
+  ========================================================= */
+  let _editOrigQ = ''; // 编辑前的原始题目（用于定位）
+
+  function openEditModal(q) {
+    const db = LibraryManager.load();
+    if (!db[q]) return;
+    _editOrigQ = q;
+    const qEl = $c('#ata-edit-q');
+    const aEl = $c('#ata-edit-a');
+    if (qEl) qEl.value = q;
+    if (aEl) aEl.value = db[q];
+    editModal.classList.add('show');
+  }
+
+  $c('#ata-edit-cancel')?.addEventListener('click', () => {
+    editModal.classList.remove('show');
+    _editOrigQ = '';
+  });
+  editModal?.addEventListener('click', e => {
+    if (e.target === editModal) {
+      editModal.classList.remove('show');
+      _editOrigQ = '';
+    }
+  });
+  $c('#ata-edit-save')?.addEventListener('click', async () => {
+    const newQ = $c('#ata-edit-q')?.value?.trim();
+    const newA = $c('#ata-edit-a')?.value?.trim();
+    if (!newQ || !newA) {
+      alert('题目和答案不能为空'); return;
+    }
+    const db = await LibraryManager.load();
+    // 如果题目内容改了，需要删除旧的、添加新的
+    if (newQ !== _editOrigQ) {
+      delete db[_editOrigQ];
+      LibraryManager.removeSource(_editOrigQ);
+    }
+    db[newQ] = newA;
+    LibraryManager.setSource(newQ, 'local');
+    await LibraryManager.save(db);
+    _cache.dirty = true;
+    editModal.classList.remove('show');
+    _editOrigQ = '';
+    refreshLibCount(); refreshStats(); renderBrowse(currentPage);
+    uLog('✏️ 题目已更新', 'ok');
   });
 
   /* =========================================================
@@ -4671,7 +4783,7 @@
       tr.innerHTML = cb
         + '<td class="q-cell">' + escHtml(q.substring(0, 100)) + (q.length > 100 ? '...' : '') + '</td>'
         + '<td style="color:var(--nm-accent);font-weight:bold">' + escHtml(String(a)) + '</td>'
-        + '<td><button class="del-btn ata-cloud-del" data-q="' + escHtml(q) + '">删除</button></td>';
+        + '<td><button class="ata-edit-btn ata-cloud-edit" data-q="' + escHtml(q) + '" title="编辑">✏️</button> <button class="del-btn ata-cloud-del" data-q="' + escHtml(q) + '">删除</button></td>';
       frag.appendChild(tr);
     });
     tbody.innerHTML = '';
@@ -4748,6 +4860,11 @@
       delete _cloudDB[q];
       await saveCloudDB();
       renderCloudBrowse(_cloudPage);
+    }
+    // 编辑云端题目
+    if (e.target.classList.contains('ata-cloud-edit')) {
+      const q = e.target.dataset.q;
+      openCloudEditModal(q);
     }
     // 批量选择
     if (e.target.classList.contains('ata-cloud-batch-cb')) {
@@ -4832,6 +4949,41 @@
     } catch (e) {
       if (statusEl) statusEl.textContent = '❌ 保存失败: ' + e.message;
     }
+  }
+
+  // 编辑云端题目弹窗
+  let _cloudEditOrigQ = '';
+
+  function openCloudEditModal(q) {
+    if (!_cloudDB || !_cloudDB[q]) return;
+    _cloudEditOrigQ = q;
+    _editOrigQ = q; // 复用同一个弹窗
+    const qEl = $c('#ata-edit-q');
+    const aEl = $c('#ata-edit-a');
+    if (qEl) qEl.value = q;
+    if (aEl) aEl.value = _cloudDB[q];
+    // 修改保存按钮行为为云端保存
+    const saveBtn = $c('#ata-edit-save');
+    if (saveBtn) {
+      saveBtn.textContent = '💾 保存到云端';
+      saveBtn.onclick = async () => {
+        const newQ = $c('#ata-edit-q')?.value?.trim();
+        const newA = $c('#ata-edit-a')?.value?.trim();
+        if (!newQ || !newA) { alert('题目和答案不能为空'); return; }
+        if (newQ !== _cloudEditOrigQ) {
+          delete _cloudDB[_cloudEditOrigQ];
+        }
+        _cloudDB[newQ] = newA;
+        await saveCloudDB();
+        editModal.classList.remove('show');
+        _cloudEditOrigQ = '';
+        saveBtn.textContent = '💾 保存';
+        saveBtn.onclick = null; // 恢复默认行为
+        renderCloudBrowse(_cloudPage);
+        uLog('✏️ 云端题目已更新', 'ok');
+      };
+    }
+    editModal.classList.add('show');
   }
 
   /* =========================================================
