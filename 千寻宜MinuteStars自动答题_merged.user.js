@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.42
+// @version      4.9.43
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -5359,27 +5359,96 @@
   ========================================================= */
   function debugScan() {
     const containers = findQContainers();
-    const info = [
-      'URL: ' + location.href,
-      '题目容器数: ' + containers.length,
-      'radio/checkbox 总数: ' + $$('input[type=radio],input[type=checkbox]').length,
-      '提交按钮: ' + $$('input[type=submit],button[type=submit]').map(b => b.value || b.textContent).join(' | ')
-    ];
-    if (containers.length > 0) {
-      const q0Text = getQText(containers[0]);
-      info.push('--- 第1题预览 ---', '题干: ' + q0Text.substring(0, 100));
-    }
-    const report = info.join('\n');
-    console.log('[ATA Pro DEBUG]\n' + report);
-    uLog(report.replace(/\n/g, ' | ').substring(0, 300), 'info');
-    const div = document.createElement('div');
-    div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:1px solid #ccc;border-radius:8px;padding:20px;z-index:2147483646;max-width:80vw;max-height:80vh;overflow:auto;font-size:12px;white-space:pre;box-shadow:0 4px 20px rgba(0,0,0,.3);';
-    div.textContent = report;
+    const db = getMergedDB();
+    const dbCount = Object.keys(db).length;
+
+    // 构建报告
+    let html = `
+      <div style="margin-bottom:16px">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px">📊 页面扫描结果</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+          <div style="background:var(--nm-bg);padding:8px;border-radius:8px;text-align:center;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light)">
+            <div style="font-size:20px;font-weight:700;color:var(--nm-accent)">${containers.length}</div>
+            <div style="font-size:10px;color:var(--nm-text-secondary)">题目数</div>
+          </div>
+          <div style="background:var(--nm-bg);padding:8px;border-radius:8px;text-align:center;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light)">
+            <div style="font-size:20px;font-weight:700;color:#48bb78">${dbCount}</div>
+            <div style="font-size:10px;color:var(--nm-text-secondary)">题库总数</div>
+          </div>
+          <div style="background:var(--nm-bg);padding:8px;border-radius:8px;text-align:center;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light)">
+            <div style="font-size:20px;font-weight:700;color:#f59e0b">${
+              containers.filter(c => findMatch(getQText(c)) !== null).length
+            }</div>
+            <div style="font-size:10px;color:var(--nm-text-secondary)">可匹配</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--nm-text-secondary);margin-bottom:4px">
+          URL: ${location.href.substring(0, 80)}${location.href.length > 80 ? '...' : ''}
+        </div>
+        <div style="font-size:11px;color:var(--nm-text-secondary)">
+          提交按钮: ${$$('input[type=submit],button[type=submit]').map(b => b.value || b.textContent).join(' | ') || '未找到'}
+        </div>
+      </div>
+      <div style="font-weight:600;font-size:13px;margin-bottom:8px">📝 题目详情</div>
+    `;
+
+    // 遍历每道题
+    containers.forEach((c, i) => {
+      const qText = getQText(c);
+      const qShort = qText.length > 60 ? qText.substring(0, 60) + '...' : qText;
+      const match = findMatch(qText);
+      const inputs = c.querySelectorAll('input[type=radio],input[type=checkbox]');
+      const options = [];
+      inputs.forEach(inp => {
+        const label = inp.closest('label') || inp.parentElement;
+        const txt = label ? label.textContent.trim() : inp.value;
+        if (txt) options.push(txt.substring(0, 30));
+      });
+      const isMultiple = inputs.length > 0 && inputs[0].type === 'checkbox';
+
+      const statusColor = match !== null ? '#48bb78' : '#f59e0b';
+      const statusText = match !== null ? '✅ 命中' : '⚠️ 未命中';
+      const answerHtml = match !== null
+        ? `<div style="margin-top:4px;font-size:11px"><span style="color:var(--nm-accent);font-weight:600">答案: ${escHtml(match)}</span></div>`
+        : '';
+
+      html += `
+        <div style="background:var(--nm-bg);border-radius:8px;padding:10px;margin-bottom:8px;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:500">${escHtml(qShort)}</div>
+              <div style="font-size:10px;color:var(--nm-text-secondary);margin-top:2px">
+                ${isMultiple ? '☑ 多选' : '○ 单选'} | ${inputs.length} 个选项
+              </div>
+            </div>
+            <div style="font-size:11px;color:${statusColor};font-weight:600;white-space:nowrap;margin-left:8px">${statusText}</div>
+          </div>
+          ${options.length > 0 ? `<div style="font-size:10px;color:var(--nm-text-secondary);margin-top:4px">选项: ${options.map(o => escHtml(o)).join(' | ')}</div>` : ''}
+          ${answerHtml}
+        </div>
+      `;
+    });
+
+    // 创建弹窗
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:2147483646;display:flex;align-items:center;justify-content:center';
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--nm-bg);border-radius:12px;padding:20px;width:600px;max-width:90vw;max-height:80vh;overflow:auto;box-shadow:12px 12px 24px var(--nm-shadow-dark),-12px -12px 24px var(--nm-shadow-light)';
+    box.innerHTML = html;
+
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '关闭'; closeBtn.style.cssText = 'position:absolute;top:8px;right:8px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;border-radius:4px;';
-    closeBtn.onclick = () => div.remove();
-    div.appendChild(closeBtn);
-    document.body.appendChild(div);
+    closeBtn.textContent = '✕ 关闭';
+    closeBtn.style.cssText = 'position:absolute;top:12px;right:12px;background:var(--nm-bg);border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;box-shadow:2px 2px 4px var(--nm-shadow-dark),-2px -2px 4px var(--nm-shadow-light)';
+    closeBtn.onclick = () => overlay.remove();
+    box.style.position = 'relative';
+    box.appendChild(closeBtn);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    uLog('🔍 扫描完成：' + containers.length + ' 道题，' + containers.filter(c => findMatch(getQText(c)) !== null).length + ' 道可匹配', 'ok');
   }
 
   /* =========================================================
