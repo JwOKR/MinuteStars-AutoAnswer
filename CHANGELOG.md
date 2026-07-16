@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.49
+### 🐛 修复
+- **云端读取容错** — `_fetchCloudDB` 处理文件不存在/为空/JSON解析失败的情况，返回空对象
+- **loadCloudDB 统一** — 使用 `_fetchCloudDB` 替代手动解析，保持一致性
+
 ## v4.9.48
 ### 🔧 重构
 - **云端同步重构** — 提取 `_mergeDatabases` 和 `_fetchCloudDB` 公共函数，消除三函数重复逻辑

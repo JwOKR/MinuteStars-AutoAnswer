@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.48
+// @version      4.9.49
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -1376,13 +1376,27 @@
     return { merged, newKeys };
   }
 
-  /** 读取云端题库，返回解析后的对象 */
+  /** 读取云端题库，返回解析后的对象（空文件/解析失败返回空对象） */
   async function _fetchCloudDB(sourceUrl) {
     const filePath = sourceUrl || CFG.cloudFilePath;
-    if (filePath.startsWith('http')) {
-      return JSON.parse(await _cloudReq('GET', filePath));
+    let raw;
+    try {
+      if (filePath.startsWith('http')) {
+        raw = await _cloudReq('GET', filePath);
+      } else {
+        raw = await _readRepoFile(filePath);
+      }
+    } catch (e) {
+      uLog('⚠️ 读取云端文件失败: ' + e.message, 'warn');
+      return {};
     }
-    return JSON.parse(await _readRepoFile(filePath));
+    if (!raw || raw.trim() === '' || raw.trim() === '{}') return {};
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      uLog('⚠️ 云端文件 JSON 解析失败', 'warn');
+      return {};
+    }
   }
 
   async function cloudUpload() {
@@ -4716,8 +4730,7 @@
 
     if (statusEl) statusEl.textContent = '⏳ 正在加载云端题库...';
     try {
-      const raw = await _readRepoFile(CFG.cloudFilePath);
-      _cloudDB = JSON.parse(raw);
+      _cloudDB = await _fetchCloudDB();
       const count = Object.keys(_cloudDB).length;
       if (statusEl) statusEl.textContent = '✅ 云端题库已加载';
       if (countEl) countEl.textContent = '共 ' + count + ' 条';
