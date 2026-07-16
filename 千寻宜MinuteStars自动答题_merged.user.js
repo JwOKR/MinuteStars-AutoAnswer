@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.46
+// @version      4.9.47
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -3646,7 +3646,30 @@
     function isEmpty(line) {
       return !line.trim();
     }
-    
+
+    // 保存当前题目（消除4处重复代码）
+    function saveCurrentQA() {
+      if (!currentAnswer) return;
+      const fullText = currentQALines.join('\n');
+      const qText = cleanQuestionText(fullText);
+      if (qText.length < 4) {
+        skipped++;
+        debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
+        return;
+      }
+      const normalizedAnswer = normalizeAnswer(currentAnswer);
+      if (db.hasOwnProperty(qText)) {
+        duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
+        skipped++;
+        debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
+      } else {
+        db[qText] = normalizedAnswer;
+        added++;
+        preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
+        debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
+      }
+    }
+
     function extractAnswer(fullText) {
       const match = fullText.match(/答案[：:]\s*([A-Za-z,，]+)/);
       return match ? match[1] : null;
@@ -3803,29 +3826,8 @@
           // 遇到下一题（带题号）或分类标题 → 保存当前题
           else if (isQuestionStart(line) || isCategoryTitle(line)) {
             // 保存当前题
-            if (currentAnswer) {
-              const fullText = currentQALines.join('\n');
-              const qText = cleanQuestionText(fullText);
-              
-              if (qText.length >= 4) {
-                const normalizedAnswer = normalizeAnswer(currentAnswer);
-                
-                if (db.hasOwnProperty(qText)) {
-                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
-                  skipped++;
-                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
-                } else {
-                  db[qText] = normalizedAnswer;
-                  added++;
-                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
-                }
-              } else {
-                skipped++;
-                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
-              }
-            }
-            
+            saveCurrentQA();
+
             // 开始下一题
             if (isQuestionStart(line)) {
               currentQALines = [line];
@@ -3841,29 +3843,8 @@
           // 遇到无题号的题干（非答案、非解析、非选项、非空）→ 保存当前题并开始新题
           else if (trimmed.length >= 4 && !isAnswerLine(line) && !isOption(line) && !isEmpty(line)) {
             // 保存当前题
-            if (currentAnswer) {
-              const fullText = currentQALines.join('\n');
-              const qText = cleanQuestionText(fullText);
-              
-              if (qText.length >= 4) {
-                const normalizedAnswer = normalizeAnswer(currentAnswer);
-                
-                if (db.hasOwnProperty(qText)) {
-                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
-                  skipped++;
-                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
-                } else {
-                  db[qText] = normalizedAnswer;
-                  added++;
-                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
-                }
-              } else {
-                skipped++;
-                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
-              }
-            }
-            
+            saveCurrentQA();
+
             // 开始新题（无题号）
             currentQALines = [line];
             currentAnswer = null;
@@ -3876,29 +3857,8 @@
           // 遇到下一题（带题号）或分类标题 → 保存当前题
           if (isQuestionStart(line) || isCategoryTitle(line)) {
             // 保存当前题
-            if (currentAnswer) {
-              const fullText = currentQALines.join('\n');
-              const qText = cleanQuestionText(fullText);
-              
-              if (qText.length >= 4) {
-                const normalizedAnswer = normalizeAnswer(currentAnswer);
-                
-                if (db.hasOwnProperty(qText)) {
-                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
-                  skipped++;
-                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
-                } else {
-                  db[qText] = normalizedAnswer;
-                  added++;
-                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
-                }
-              } else {
-                skipped++;
-                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
-              }
-            }
-            
+            saveCurrentQA();
+
             // 开始下一题
             if (isQuestionStart(line)) {
               currentQALines = [line];
@@ -3914,29 +3874,8 @@
           // 遇到无题号的题干 → 保存当前题并开始新题
           else if (trimmed.length >= 4 && !isAnswerLine(line) && !isOption(line) && !isEmpty(line)) {
             // 保存当前题
-            if (currentAnswer) {
-              const fullText = currentQALines.join('\n');
-              const qText = cleanQuestionText(fullText);
-              
-              if (qText.length >= 4) {
-                const normalizedAnswer = normalizeAnswer(currentAnswer);
-                
-                if (db.hasOwnProperty(qText)) {
-                  duplicates.push({ q: qText, oldAns: db[qText], newAns: normalizedAnswer });
-                  skipped++;
-                  debugLog('INFO', 'SKIP', '重复题目（已覆盖）', { q: qText.substring(0, 80), oldAns: db[qText], newAns: normalizedAnswer });
-                } else {
-                  db[qText] = normalizedAnswer;
-                  added++;
-                  preview.push({ q: qText.substring(0, 60), a: normalizedAnswer });
-                  debugLog('INFO', 'IMPORT', '新增题目', { q: qText.substring(0, 80), a: normalizedAnswer });
-                }
-              } else {
-                skipped++;
-                debugLog('INFO', 'SKIP', '题干过短（<4字符）', { q: qText, len: qText.length });
-              }
-            }
-            
+            saveCurrentQA();
+
             // 开始新题（无题号）
             currentQALines = [line];
             currentAnswer = null;
@@ -5259,13 +5198,14 @@
      <span class="answer-badge reference">正确答案</span>
      同级紧邻的 <span class="ml-l"> 文本
   ========================================================= */
-  function collectAnswers() {
+  async function collectAnswers() {
     uLog('开始采集答案…', 'info');
     const containers = findQContainers();
     let cnt = 0, skip = 0;
     const debugLog = []; // 调试日志
 
-    containers.forEach((c, idx) => {
+    for (let idx = 0; idx < containers.length; idx++) {
+      const c = containers[idx];
       const qText = getQText(c);
       if (!qText || qText.length < 4) { skip++; return; }
       const qShort = qText.length > 50 ? qText.substring(0, 50) + '...' : qText;
@@ -5361,10 +5301,12 @@
         return;
       }
 
-      // 去重 + 更新
+      // 去重 + 更新（使用 cleanMap O(1) 查找替代线性遍历）
       const db  = LibraryManager.load();
       const nq  = cleanText(qText);
-      const existKey = Object.keys(db).find(k => cleanText(k) === nq);
+      const { cleanMap } = getMergedCache();
+      const existEntry = cleanMap.get(nq) || cleanMap.get(nq.replace(/[?？]$/, ''));
+      const existKey = existEntry ? existEntry.orig : null;
       if (!existKey) {
         // 新题目，直接添加
         LibraryManager.add(qText, answer);
@@ -5380,7 +5322,7 @@
       } else {
         skip++;
       }
-    });
+    }
     uLog('采集完成，新增/更新 ' + cnt + ' 条，跳过 ' + skip + ' 条', cnt > 0 ? 'ok' : 'warn');
     refreshLibCount();
     refreshStats();

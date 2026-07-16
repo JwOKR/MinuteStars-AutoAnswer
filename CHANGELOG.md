@@ -1,5 +1,13 @@
 # Changelog
 
+## v4.9.47
+### 🐛 修复
+- **collectAnswers async 修复** — 函数声明改为 async，forEach 改为 for 循环，await 生效
+- **采集查找性能优化** — O(n×m) 线性遍历改为 cleanMap O(1) 查找
+
+### 🔧 重构
+- **状态机去重** — 提取 `saveCurrentQA()` 函数，消除4处重复代码（~80行）
+
 ## v4.9.46
 ### 🔧 优化
 - **采集后自动同步** — 采集答案后自动同步到云端（需开启云同步并填写 Token）
