@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.56
+// @version      4.9.57
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -1956,9 +1956,6 @@
         inset 3px 3px 6px var(--nm-shadow-dark),
         inset -3px -3px 6px var(--nm-shadow-light);
     }
-    /* 策略预设 */
-    .ata-presets-row{display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap}
-    .ata-presets-hint{min-height:14px}
     .ata-collapse-body.open{display:block;padding:12px;}
     .ata-section-title{
       font-size:10px;color:var(--nm-text-secondary);
@@ -2629,19 +2626,6 @@
         <span class="ata-label">控制台日志</span>
         <label class="ata-toggle"><input type="checkbox" id="cfg-debug"><span class="ata-slider"></span></label>
       </div>
-
-      <div class="ata-section-title">📋 策略预设</div>
-      <div class="ata-presets-row">
-        <select id="ata-preset-select" class="ata-text-input" style="flex:1;padding:6px 10px;font-size:12px">
-          <option value="">— 选择预设 —</option>
-          <option value="fast">⚡ 快速答题（低延迟）</option>
-          <option value="accurate">🎯 精准答题（高阈值）</option>
-          <option value="safe">🛡️ 安全答题（长延迟）</option>
-        </select>
-        <button class="ata-btn blue" id="ata-preset-apply" style="padding:6px 12px;font-size:11px">应用</button>
-        <button class="ata-btn" id="ata-preset-save" style="padding:6px 12px;font-size:11px">💾 保存当前</button>
-      </div>
-      <div class="ata-presets-hint" id="ata-presets-hint" style="font-size:10px;color:var(--nm-text-secondary);margin-top:4px"></div>
 
       <div style="margin-top:6px;display:flex;gap:6px">
         <button class="ata-btn green" id="cfg-save">💾 保存</button>
@@ -6096,102 +6080,6 @@
     if (e.key === 'Escape') {
       libModal.classList.remove('show');
     }
-  });
-
-  /* =========================================================
-     策略预设
-  ========================================================= */
-  const PRESETS_KEY = 'ata_presets';
-  const PRESET_DEFS = {
-    '快速': {
-      name: '快速模式',
-      fuzzyEnable: false,
-      fuzzyThresh: 0.75,
-      answerDelay: 50,
-      autoLogin: true,
-      hint: '关闭模糊匹配，答题间隔 50ms，速度最快',
-    },
-    '精准': {
-      name: '精准模式',
-      fuzzyEnable: true,
-      fuzzyThresh: 0.85,
-      answerDelay: 120,
-      autoLogin: true,
-      hint: '开启模糊匹配（阈值 0.85），答题间隔 120ms，准确率优先',
-    },
-    '安全': {
-      name: '安全模式',
-      fuzzyEnable: true,
-      fuzzyThresh: 0.90,
-      answerDelay: 300,
-      autoLogin: false,
-      hint: '高阈值模糊匹配（0.90），答题间隔 300ms，最接近人工操作',
-    },
-  };
-  let _userPresets = {};
-
-  function loadPresets() {
-    try { _userPresets = JSON.parse(GM_getValue(PRESETS_KEY, '{}')); } catch { _userPresets = {}; }
-  }
-  function savePresets() {
-    try { GM_setValue(PRESETS_KEY, JSON.stringify(_userPresets)); } catch {}
-  }
-  function applyPreset(preset) {
-    const p = { ...PRESET_DEFS[preset], ..._userPresets[preset] };
-    if (!p) return;
-    CFG.fuzzyEnable = p.fuzzyEnable;
-    CFG.fuzzyThresh = p.fuzzyThresh;
-    CFG.answerDelay = p.answerDelay;
-    CFG.autoLogin = p.autoLogin;
-    syncSettingsUI();
-    const hint = document.getElementById('ata-presets-hint');
-    if (hint) hint.textContent = '已应用：' + p.name + ' — ' + p.hint;
-  }
-  function showPresetHint(sel) {
-    const hint = document.getElementById('ata-presets-hint');
-    if (!hint || !sel) { if (hint) hint.textContent = ''; return; }
-    const p = { ...PRESET_DEFS[sel], ..._userPresets[sel] };
-    if (hint) hint.textContent = p ? p.hint : '';
-  }
-
-  loadPresets();
-
-  // 预设选择提示
-  document.getElementById('ata-preset-select')?.addEventListener('change', function() {
-    showPresetHint(this.value);
-  });
-
-  // 应用预设
-  document.getElementById('ata-preset-apply')?.addEventListener('click', () => {
-    const sel = document.getElementById('ata-preset-select')?.value;
-    if (!sel) { alert('请先选择一个预设'); return; }
-    applyPreset(sel);
-  });
-
-  // 保存当前设置到预设
-  document.getElementById('ata-preset-save')?.addEventListener('click', () => {
-    const name = prompt('输入预设名称：');
-    if (!name?.trim()) return;
-    const presetName = name.trim();
-    _userPresets[presetName] = {
-      fuzzyEnable: CFG.fuzzyEnable,
-      fuzzyThresh: CFG.fuzzyThresh,
-      answerDelay: CFG.answerDelay,
-      autoLogin: CFG.autoLogin,
-      hint: '自定义预设',
-    };
-    // 更新下拉框
-    const select = document.getElementById('ata-preset-select');
-    if (select) {
-      const opt = document.createElement('option');
-      opt.value = '__custom_' + presetName;
-      opt.textContent = '★ ' + presetName;
-      select.appendChild(opt);
-      select.value = opt.value;
-    }
-    savePresets();
-    const hint = document.getElementById('ata-presets-hint');
-    if (hint) hint.textContent = '已保存当前设置为：' + presetName;
   });
 
   /* =========================================================
