@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.9.48
+### 🔧 重构
+- **云端同步重构** — 提取 `_mergeDatabases` 和 `_fetchCloudDB` 公共函数，消除三函数重复逻辑
+- **源追踪修复** — 下载/导入时正确标记题目来源为 'cloud'
+- **日志优化** — 统一显示 本地/云端/合并/新增 数量
+
 ## v4.9.47
 ### 🐛 修复
 - **collectAnswers async 修复** — 函数声明改为 async，forEach 改为 for 循环，await 生效

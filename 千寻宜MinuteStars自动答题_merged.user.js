@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.47
+// @version      4.9.48
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -1360,6 +1360,31 @@
   }
 
   /** 上传题库到仓库文件（合并去重：本地题库优先，云端兜底） */
+  /** 通用合并：localDB + cloudDB，local 优先，返回 { merged, newKeys } */
+  function _mergeDatabases(localDB, cloudDB) {
+    const merged = {};
+    const newKeys = [];
+    // 先写云端（底层）
+    for (const k in cloudDB) { merged[k] = cloudDB[k]; }
+    // 本地覆盖（优先），并记录云端新增的 key
+    for (const k in localDB) {
+      merged[k] = localDB[k];
+    }
+    for (const k in cloudDB) {
+      if (!localDB.hasOwnProperty(k)) newKeys.push(k);
+    }
+    return { merged, newKeys };
+  }
+
+  /** 读取云端题库，返回解析后的对象 */
+  async function _fetchCloudDB(sourceUrl) {
+    const filePath = sourceUrl || CFG.cloudFilePath;
+    if (filePath.startsWith('http')) {
+      return JSON.parse(await _cloudReq('GET', filePath));
+    }
+    return JSON.parse(await _readRepoFile(filePath));
+  }
+
   async function cloudUpload() {
     if (!CFG.cloudSyncEnable || !CFG.cloudToken) {
       uLog('⚠️ 请先在设置中填写 Token 并开启云同步', 'warn'); return false;
@@ -1367,31 +1392,30 @@
     uLog('⬆️ 正在上传题库到仓库（合并去重）…', 'info');
     try {
       const localDB = LibraryManager.load();
-      let cloudDB = {};
-      let cloudCount = 0;
+      const localCnt = Object.keys(localDB).length;
 
-      // 尝试读取云端已有题库
+      // 读取云端
+      let cloudDB = {};
       try {
-        const cloudRaw = await _readRepoFile(CFG.cloudFilePath);
-        cloudDB = JSON.parse(cloudRaw);
-        cloudCount = Object.keys(cloudDB).length;
-        uLog('📊 云端有 ' + cloudCount + ' 条', 'info');
+        cloudDB = await _fetchCloudDB();
+        uLog('📊 云端有 ' + Object.keys(cloudDB).length + ' 条', 'info');
       } catch {
         uLog('📊 云端无题库，将创建新文件', 'info');
       }
 
-      // 合并：本地优先，云端补充
-      const merged = { ...cloudDB, ...localDB };
-      const cloudNewCount = Object.keys(merged).filter(k => !localDB.hasOwnProperty(k)).length;
-      uLog('📊 云端 ' + cloudCount + ' 条 + 本地 ' + Object.keys(localDB).length + ' 条 = 合并 ' + Object.keys(merged).length + ' 条', 'info');
+      // 合并
+      const { merged, newKeys } = _mergeDatabases(localDB, cloudDB);
+      const mergedCnt = Object.keys(merged).length;
 
-      const content = JSON.stringify(merged, null, 2);
-      await _writeRepoFile(CFG.cloudFilePath, content,
+      uLog('📊 本地 ' + localCnt + ' 条 + 云端 ' + Object.keys(cloudDB).length + ' 条 → 合并 ' + mergedCnt + ' 条（云端新增 ' + newKeys.length + ' 条）', 'info');
+
+      // 写入
+      await _writeRepoFile(CFG.cloudFilePath, JSON.stringify(merged, null, 2),
         'MinuteStars 题库备份 ' + new Date().toLocaleString());
 
-      uLog('✅ 合并上传成功！共 ' + Object.keys(merged).length + ' 条（云端补充 ' + cloudNewCount + ' 条）', 'ok');
-      uLog('📤 公开分享链接：<a href="' + repoRawUrl(CFG.cloudFilePath) + '" target="_blank">' + repoRawUrl(CFG.cloudFilePath) + '</a>', 'info');
-      gmNotify('云同步', '题库上传成功！共 ' + Object.keys(merged).length + ' 条');
+      uLog('✅ 上传成功！共 ' + mergedCnt + ' 条', 'ok');
+      uLog('📤 分享链接：<a href="' + repoRawUrl(CFG.cloudFilePath) + '" target="_blank">' + repoRawUrl(CFG.cloudFilePath) + '</a>', 'info');
+      gmNotify('云同步', '上传成功！共 ' + mergedCnt + ' 条');
       return true;
     } catch (e) {
       uLog('❌ 上传失败: ' + e.message, 'err');
@@ -1404,22 +1428,28 @@
     if (!CFG.cloudSyncEnable) {
       uLog('⚠️ 请先开启云同步', 'warn'); return false;
     }
-    uLog('⬇️ 正在下载题库（云端覆盖本地）…', 'info');
+    uLog('⬇️ 正在下载题库（覆盖本地）…', 'info');
     try {
-      const raw = await _readRepoFile(CFG.cloudFilePath);
-      const remoteDB = JSON.parse(raw);
+      const remoteDB = await _fetchCloudDB();
+      const cnt = Object.keys(remoteDB).length;
+
+      // 更新源追踪
       if (!_sourceMap) _sourceMap = {};
-      Object.keys(remoteDB).forEach(q => { _sourceMap[q] = 'local'; });
+      for (const q in remoteDB) { _sourceMap[q] = 'cloud'; }
+
+      // 更新缓存
       if (CFG.cloudReadMode === 'cloud') {
         _cloudCache = remoteDB;
         _cloudCacheTime = Date.now();
       }
-      LibraryManager.save(remoteDB);
+
+      await LibraryManager.save(remoteDB);
       _cache.dirty = true;
-      const cnt = Object.keys(remoteDB).length;
+
       uLog('✅ 下载成功！云端题库已覆盖本地，共 ' + cnt + ' 条', 'ok');
       refreshLibCount();
-      gmNotify('云同步', '题库下载成功！共 ' + cnt + ' 条（已覆盖本地）');
+      refreshStats();
+      gmNotify('云同步', '下载成功！共 ' + cnt + ' 条');
       return true;
     } catch (e) {
       uLog('❌ 下载失败: ' + e.message, 'err');
@@ -1427,50 +1457,44 @@
     }
   }
 
-  /** 从仓库导入题库（追加到本地：云端有则用云端，本地有则保留本地）
-   *  @param {string} [sourceUrl] - 可选，指定 raw URL 或 repo 文件路径；不传则使用默认路径
+  /** 从仓库导入题库（追加到本地：本地有则保留本地，云端有则补充）
+   *  @param {string} [sourceUrl] - 可选，指定 raw URL 或 repo 文件路径
    */
   async function cloudImport(sourceUrl) {
     if (!CFG.cloudSyncEnable) {
       uLog('⚠️ 请先开启云同步', 'warn'); return false;
     }
-    const filePath = sourceUrl || CFG.cloudFilePath;
     uLog('☁ 正在导入云端题库（追加到本地）…', 'info');
     try {
-      // 如果传入的是完整 URL（如分享链接），直接用 fetch
-      let raw;
-      if (filePath.startsWith('http')) {
-        raw = await _cloudReq('GET', filePath);
-      } else {
-        raw = await _readRepoFile(filePath);
-      }
-      const cloudDB = JSON.parse(raw);
+      const cloudDB = await _fetchCloudDB(sourceUrl);
+      const cloudCnt = Object.keys(cloudDB).length;
+
       const localDB = CFG.cloudReadMode === 'cloud'
         ? (_cloudCache || {})
         : LibraryManager.load();
-      const before = Object.keys(localDB).length;
-      // 追加：云端补充本地没有的条目
-      const merged = { ...localDB, ...cloudDB };
-      // 标记来自云端的题目来源为云端
+      const localCnt = Object.keys(localDB).length;
+
+      // 合并：本地优先
+      const { merged, newKeys } = _mergeDatabases(localDB, cloudDB);
+      const mergedCnt = Object.keys(merged).length;
+
+      // 标记新增题目的来源
       if (!_sourceMap) _sourceMap = {};
-      for (const q of Object.keys(cloudDB)) {
-        if (!localDB.hasOwnProperty(q)) {
-          _sourceMap[q] = 'local';
-        }
-      }
+      for (const q of newKeys) { _sourceMap[q] = 'cloud'; }
+
+      // 更新缓存
       if (CFG.cloudReadMode === 'cloud') {
         _cloudCache = merged;
         _cloudCacheTime = Date.now();
       }
-      LibraryManager.save(merged);
+
+      await LibraryManager.save(merged);
       _cache.dirty = true;
-      const after = Object.keys(merged).length;
-      const newCount = after - before;
-      const modeHint = CFG.cloudReadMode === 'cloud' ? '（直读云端）' : '';
-      uLog('✅ 导入成功！本地 ' + before + ' 条 + 云端新增 ' + newCount + ' 条 = 合计 ' + after + ' 条' + modeHint, 'ok');
+
+      uLog('✅ 导入成功！本地 ' + localCnt + ' 条 + 云端 ' + cloudCnt + ' 条 → 合计 ' + mergedCnt + ' 条（新增 ' + newKeys.length + ' 条）', 'ok');
       refreshLibCount();
       refreshStats();
-      gmNotify('云同步', '导入成功！新增 ' + newCount + ' 条（本地已有保留）');
+      gmNotify('云同步', '导入成功！新增 ' + newKeys.length + ' 条');
       return true;
     } catch (e) {
       uLog('❌ 导入失败: ' + e.message, 'err');
