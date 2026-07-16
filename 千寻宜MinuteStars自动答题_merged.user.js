@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.50
+// @version      4.9.51
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -736,10 +736,11 @@
     if (_cloudCache && (now - _cloudCacheTime) < _CLOUD_CACHE_TTL) return _cloudCache;
     if (!CFG.cloudSyncEnable) return null;
     try {
-      const raw = await _readRepoFile(CFG.cloudFilePath);
-      _cloudCache = JSON.parse(raw);
+      const cloudData = await _fetchCloudDB();
+      _cloudCache = cloudData;
       _cloudCacheTime = now;
-      uLog('☁ 云端题库已加载（' + Object.keys(_cloudCache).length + ' 条，有效期 5 分钟）', 'ok');
+      const cnt = Object.keys(_cloudCache).length;
+      uLog('☁ 云端题库已加载（' + cnt + ' 条，有效期 5 分钟）', cnt > 0 ? 'ok' : 'warn');
       // 立即重建缓存，使云端题目生效
       _cache.dirty = true;
       rebuildCache();
@@ -1393,7 +1394,7 @@
     if (!raw || raw.trim() === '' || raw.trim() === '{}') return {};
     // 如果内容仍以 ENC: 开头，说明解密失败
     if (raw.startsWith('ENC:')) {
-      uLog('⚠️ 云端文件仍为加密状态，解密可能失败', 'warn');
+      uLog('❌ 云端文件解密失败！请检查：1) 加密密码是否正确 2) 文件是否用其他密码加密', 'err');
       return {};
     }
     try {
