@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.55
+// @version      4.9.56
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -6103,6 +6103,30 @@
   ========================================================= */
   const PRESETS_KEY = 'ata_presets';
   const PRESET_DEFS = {
+    '快速': {
+      name: '快速模式',
+      fuzzyEnable: false,
+      fuzzyThresh: 0.75,
+      answerDelay: 50,
+      autoLogin: true,
+      hint: '关闭模糊匹配，答题间隔 50ms，速度最快',
+    },
+    '精准': {
+      name: '精准模式',
+      fuzzyEnable: true,
+      fuzzyThresh: 0.85,
+      answerDelay: 120,
+      autoLogin: true,
+      hint: '开启模糊匹配（阈值 0.85），答题间隔 120ms，准确率优先',
+    },
+    '安全': {
+      name: '安全模式',
+      fuzzyEnable: true,
+      fuzzyThresh: 0.90,
+      answerDelay: 300,
+      autoLogin: false,
+      hint: '高阈值模糊匹配（0.90），答题间隔 300ms，最接近人工操作',
+    },
   };
   let _userPresets = {};
 
