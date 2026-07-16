@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.54
+// @version      4.9.55
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -1622,7 +1622,7 @@
       --z-modal: 10000000;
     }
 
-    /* 深色模式适配 */
+    /* 深色模式 CSS 变量（由 JS detectDarkMode 控制 .ata-dark 类） */
     @media (prefers-color-scheme: dark) {
       :root {
         --nm-bg: #1e2530;
@@ -1631,14 +1631,6 @@
         --nm-text: #b8c4d4;
         --nm-text-secondary: #7a8a9a;
       }
-      /* 标题栏深色模式 */
-      .ata-hdr, #ata-lib-header {
-        background: linear-gradient(145deg, #2a3441, #1e2530) !important;
-        border-bottom-color: rgba(255,255,255,0.05);
-      }
-      .ata-hdr-title { color: #b8c4d4 !important; }
-      .ata-hdr-sub { color: #7a8a9a !important; }
-      .ata-hdr-ver { color: #7a8a9a !important; background: #1e2530 !important; }
     }
 
     #ata-panel {
@@ -2368,14 +2360,14 @@
   // 立即尝试（整页刷新 / 首次加载）
   handleLogin();
 
-  // 持续轮询检测登录表单（覆盖 SPA 导航、session 过期跳转等场景）
-  setInterval(() => {
-    // 登录表单消失 → 重置标记（允许下次出现时重新登录）
+  // 使用 MutationObserver 监听登录表单出现（替代 setInterval 轮询）
+  const _loginObserver = new MutationObserver(() => {
     if (_loginHandled && !document.querySelector('#txtUserName')) {
       _loginHandled = false;
     }
     if (!_loginHandled) handleLogin();
-  }, 1000);
+  });
+  _loginObserver.observe(document.body, { childList: true, subtree: true });
 
   // 非答题/查看答案页静默退出
   if (!isAnswerPage() && !isViewPage()) return;

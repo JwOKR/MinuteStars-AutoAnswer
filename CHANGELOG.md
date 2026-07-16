@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.9.55
+### 🔧 优化
+- **深色模式 CSS 合并** — 删除 `@media (prefers-color-scheme: dark)` 中重复的标题栏样式，保留 CSS 变量
+- **登录检测优化** — `setInterval(1000)` 改为 `MutationObserver`，减少无效 DOM 查询
+
 ## v4.9.54
 ### 🧹 清理
 - **删除废弃代码** — 移除未使用的 `@match` 域名、`@connect api.github.com`、`cloudGistId`
