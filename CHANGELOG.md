@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.9.52
+### 🐛 修复
+- **批量导入自动同步** — 批量导入后自动同步到云端（需开启云同步并填写 Token）
+
 ## v4.9.51
 ### 🐛 修复
 - **fetchCloudDB 统一** — 直读云端函数 `fetchCloudDB` 改用 `_fetchCloudDB`，修复解密失败返回 0 条的问题

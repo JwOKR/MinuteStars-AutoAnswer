@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.51
+// @version      4.9.52
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -3208,7 +3208,7 @@
     el.className = 'ata-import-result ' + (ok ? 'ok' : 'err');
     setTimeout(() => { el.style.display = 'none'; }, 5000);
   }
-  function doImport(text) {
+  async function doImport(text) {
     if (!text.trim()) { showImportResult('请输入题库内容！', false); return; }
     const r = LibraryManager.addBulk(text);
     let msg = '✅ 导入 ' + r.added + ' 条';
@@ -3227,6 +3227,11 @@
     }
     refreshLibCount(); refreshStats(); renderBrowse(currentPage);
     $('#ata-bulk-text').value = '';
+    // 自动同步到云端
+    if (r.added > 0 && CFG.cloudSyncEnable && CFG.cloudToken) {
+      uLog('⬆️ 正在同步到云端...', 'info');
+      await cloudUpload();
+    }
   }
   $('#ata-do-import').addEventListener('click', () => doImport($('#ata-bulk-text').value));
   $('#ata-do-clipboard').addEventListener('click', async () => {
