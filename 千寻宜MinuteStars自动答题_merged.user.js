@@ -1,15 +1,11 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.53
+// @version      4.9.54
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
 // @match        *://*.minutestars.com/*
-// @match        *://*.xuexiqiangguo.cn/*
-// @match        *://*.chaoxing.com/*
-// @match        *://*.zhihuishu.com/*
-// @match        *://*.zhidao.com/*
 // @match        *://localhost/*
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -17,7 +13,6 @@
 // @grant        GM_xmlhttpRequest
 // @connect      gitee.com
 // @connect      giteeusercontent.com
-// @connect      api.github.com
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -101,16 +96,6 @@
         oldPhrase = phrase;
       }
       return out.join('');
-    },
-
-    /** 压缩 JSON 字符串（返回压缩后的字符串） */
-    compressJSON(jsonString) {
-      return this.compress(jsonString);
-    },
-
-    /** 解压字符串（返回原始 JSON） */
-    decompressJSON(compressed) {
-      return this.decompress(compressed);
     }
   };
 
@@ -180,7 +165,6 @@
     cloudRepoPath:    'law-of-order/MinuteStars-AutoAnswer', // 仓库路径（owner/repo）
     cloudFilePath:    'minutestars_qa.json',       // 题库文件路径
     cloudBranch:      'main',            // 分支名
-    cloudGistId:      '',     // [已废弃] 旧 Gist ID（用于迁移）
     cloudToken:       '',     // Gitee 私人令牌
     cloudEncrypt:     true,   // 加密上传（AES-GCM，内置密码 1129）
     customDomains:    [],    // 自定义匹配域名（运行时生效）
@@ -537,20 +521,7 @@
       }
     },
 
-    /* ========== 8. IndexedDB 读取单条 ========== */
-    async idbGet(key) {
-      const db = await this._openIDB();
-      return new Promise((resolve, reject) => {
-        const tx    = db.transaction(this.STORE_NAME, 'readonly');
-        const store = tx.objectStore(this.STORE_NAME);
-        const req   = store.get(key);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror   = () => reject(req.error);
-        tx.oncomplete = () => db.close();
-      });
-    },
-
-    /* ========== 9. IndexedDB 写入单条 ========== */
+    /* ========== 8. IndexedDB 写入单条 ========== */
     async idbSet(key, value) {
       const db = await this._openIDB();
       return new Promise((resolve, reject) => {
@@ -1668,11 +1639,6 @@
       .ata-hdr-title { color: #b8c4d4 !important; }
       .ata-hdr-sub { color: #7a8a9a !important; }
       .ata-hdr-ver { color: #7a8a9a !important; background: #1e2530 !important; }
-    }
-    /* 也支持手动检测页面背景色 */
-    @media (light-level: dim), (light-level: normal) {
-    }
-    @media (light-level: washed) {
     }
 
     #ata-panel {
@@ -5044,7 +5010,7 @@
     const d = document.createElement('div');
     d.innerHTML = '<span style="color:' + c + '">[' + t + '] ' + escHtml(msg) + '</span>';
     el.prepend(d);
-    console.log('[ATA Pro]', msg);
+    if (CFG.debug) console.log('[ATA Pro]', msg);
   }
 
   function setProgress(cur, total) {
@@ -5119,7 +5085,7 @@
     const label = input.closest('label') || (input.id ? pageWin.document.querySelector('label[for="'+input.id+'"]') : null);
     if (label) {
       label.click();
-      for (const ev of ['mousedown','mouseup','click','pointerdown','pointerup','pointerclick']) {
+      for (const ev of ['mousedown','mouseup','click','pointerdown','pointerup']) {
         label.dispatchEvent(new MouseEvent(ev, { view: pageWin, bubbles:true, cancelable:true, clientX:cx, clientY:cy }));
       }
     }

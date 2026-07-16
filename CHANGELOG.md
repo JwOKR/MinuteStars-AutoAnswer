@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.9.54
+### 🧹 清理
+- **删除废弃代码** — 移除未使用的 `@match` 域名、`@connect api.github.com`、`cloudGistId`
+- **删除未使用方法** — 移除 `LZString.compressJSON`/`decompressJSON`、`idbGet`
+- **删除无效代码** — 移除空的 `@media (light-level:...)` 规则、非标准 `pointerclick` 事件
+- **优化日志** — `uLog` 的 console.log 绑定到 `CFG.debug` 开关
+
 ## v4.9.53
 ### 🔧 重构
 - **常量集中管理** — 提取 `THRESHOLDS` 对象，统一管理所有魔法数字
