@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.52
+// @version      4.9.53
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -115,6 +115,46 @@
   };
 
   /* =========================================================
+     常量定义（集中管理所有魔法数字）
+  ========================================================= */
+  const THRESHOLDS = Object.freeze({
+    /** 语义去重相似度阈值 */
+    SEMANTIC_DEDUP: 0.88,
+    /** 几乎完全相同提前退出阈值 */
+    NEAR_EXACT: 0.95,
+    /** 模糊匹配最低相似度 */
+    FUZZY_MATCH: 0.75,
+    /** 题目最小字符数 */
+    MIN_QUESTION_LEN: 4,
+    /** 长度差异超过此比例直接跳过 */
+    LEN_DIFF_RATIO: 0.5,
+    /** 云端缓存有效期 (ms) */
+    CLOUD_CACHE_TTL: 5 * 60 * 1000,
+    /** cleanText 缓存上限 */
+    CLEAN_TEXT_CACHE_SIZE: 2000,
+    /** MatchCache 缓存上限 */
+    MATCH_CACHE_SIZE: 500,
+    /** 分页大小 */
+    PAGE_SIZE: 20,
+    /** SHA 冲突最大重试次数 */
+    MAX_SHA_RETRIES: 3,
+    /** SHA 重试间隔 (ms) */
+    SHA_RETRY_DELAY: 500,
+    /** 正确率历史最大条数 */
+    ACC_HISTORY_MAX: 50,
+    /** 增量更新阈值（低于此数量走增量路径） */
+    INCREMENTAL_THRESHOLD: 50,
+    /** requestIdleCallback deadline (ms) */
+    IDLE_DEADLINE: 16,
+    /** 搜索防抖延迟 (ms) */
+    SEARCH_DEBOUNCE: 300,
+    /** Jaro-Winkler 前缀权重 */
+    WINKLER_PREFIX_WEIGHT: 0.1,
+    /** Jaro-Winkler 前缀最大长度 */
+    WINKLER_PREFIX_MAX: 4,
+  });
+
+  /* =========================================================
      配置区（GM 持久化，面板可实时修改）
   ========================================================= */
 
@@ -177,24 +217,24 @@
   ========================================================= */
   function semanticDedupCheck(question, db) {
     const nq = cleanText(question);
-    if (!nq || nq.length < 4) return null; // 太短无法判断
+    if (!nq || nq.length < THRESHOLDS.MIN_QUESTION_LEN) return null;
     const nqLen = nq.length;
     let bestMatch = null, bestSim = 0;
     for (const existingQ of Object.keys(db)) {
       const ck = cleanText(existingQ);
-      if (!ck || Math.abs(ck.length - nqLen) > Math.max(ck.length, nqLen) * 0.5) continue;
+      if (!ck || Math.abs(ck.length - nqLen) > Math.max(ck.length, nqLen) * THRESHOLDS.LEN_DIFF_RATIO) continue;
       const sim = strSim(nq, ck);
       if (sim > bestSim) { bestSim = sim; bestMatch = existingQ; }
-      if (sim > 0.95) break; // 几乎完全相同，提前退出
+      if (sim > THRESHOLDS.NEAR_EXACT) break;
     }
-    return bestSim > 0.88 ? bestMatch : null;
+    return bestSim > THRESHOLDS.SEMANTIC_DEDUP ? bestMatch : null;
   }
 
   /* =========================================================
       正确率趋势图（v4.7.0）
       追踪每题命中情况，Canvas 绘制最近 50 题正确率折线
   ========================================================= */
-  const ACC_HISTORY_MAX = 50;
+  const ACC_HISTORY_MAX = THRESHOLDS.ACC_HISTORY_MAX;
   function updateAccuracyHistory(matched) {
     _accuracyResults.push(matched ? 1 : 0);
     if (_accuracyResults.length > ACC_HISTORY_MAX) _accuracyResults.shift();
@@ -728,7 +768,7 @@
   /** 直读云端模式：内存缓存 + 最后拉取时间 */
   let _cloudCache = null;
   let _cloudCacheTime = 0;
-  const _CLOUD_CACHE_TTL = 5 * 60 * 1000; // 5 分钟 TTL，过期则重新拉取
+  const _CLOUD_CACHE_TTL = THRESHOLDS.CLOUD_CACHE_TTL;
 
   /** 直读云端：从仓库拉取题库到内存（不落地本地） */
   async function fetchCloudDB() {
@@ -795,7 +835,7 @@
     const raw = { ...userDB };
 
     // 增量更新：若有 dirtyKeys 且缓存已存在，则只更新变更部分
-    if (_cache.cleanMap && _cache.dirtyKeys?.size > 0 && _cache.dirtyKeys?.size < 50) {
+    if (_cache.cleanMap && _cache.dirtyKeys?.size > 0 && _cache.dirtyKeys?.size < THRESHOLDS.INCREMENTAL_THRESHOLD) {
       for (const k of _cache.dirtyKeys) {
         const ck = cleanText(k);
         const v = raw[k];
@@ -880,7 +920,7 @@
       .replace(/\s+/g, '')
       .replace(/[\p{P}\p{S}]+/gu, '')
       .toLowerCase();
-    if (_cleanTextCache.size >= 2000) _cleanTextCache.delete(_cleanTextCache.keys().next().value);
+    if (_cleanTextCache.size >= THRESHOLDS.CLEAN_TEXT_CACHE_SIZE) _cleanTextCache.delete(_cleanTextCache.keys().next().value);
     _cleanTextCache.set(text, result);
     return result;
   }
@@ -922,12 +962,12 @@
 
     const jaro = (m / la + m / lb + (m - t / 2) / m) / 3;
 
-    // Winkler 前缀加成（最多 4 个字符，权重 0.1）
+    // Winkler 前缀加成
     let prefix = 0;
-    for (let i = 0; i < Math.min(4, la, lb); i++) {
+    for (let i = 0; i < Math.min(THRESHOLDS.WINKLER_PREFIX_MAX, la, lb); i++) {
       if (a[i] === b[i]) prefix++; else break;
     }
-    return Math.min(1, jaro + prefix * 0.1 * (1 - jaro));
+    return Math.min(1, jaro + prefix * THRESHOLDS.WINKLER_PREFIX_WEIGHT * (1 - jaro));
   }
 
   /** 混合相似度：Jaro-Winkler 为主，结合长度惩罚
@@ -938,7 +978,7 @@
    * 缓存最近 500 条匹配结果，避免重复计算
    */
   const MatchCache = {
-    maxSize: 500,
+    maxSize: THRESHOLDS.MATCH_CACHE_SIZE,
     cache: new Map(),  // key: cleanText(q), value: { ans, sim }
     get(q) {
       const key = typeof q === 'string' ? q : '';
@@ -966,8 +1006,7 @@
   function strSim(a, b) {
     if (!a || !b) return 0;
     const la = a.length, lb = b.length;
-    // 长度差距过大直接排除（Jaro-Winkler 自带长度惩罚，这里再加一层粗筛）
-    if (Math.abs(la - lb) > Math.max(la, lb) * 0.5) return 0;
+    if (Math.abs(la - lb) > Math.max(la, lb) * THRESHOLDS.LEN_DIFF_RATIO) return 0;
     return jaroWinkler(a, b);
   }
 
@@ -4413,7 +4452,7 @@
 
   // 浏览题库（分页）
   let currentPage = 1;
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = THRESHOLDS.PAGE_SIZE;
 
   /** 高亮搜索关键词（支持纯文本和正则） */
   function _highlight(text, keyword, isRegex) {
@@ -4563,7 +4602,7 @@
   }
   // ⚡ 搜索防抖（300ms），避免每次按键都触发全量过滤+渲染
   let _searchT = null;
-  $('#ata-lib-search').addEventListener('input', () => { clearTimeout(_searchT); _searchT = setTimeout(() => renderBrowse(1), 300); });
+  $('#ata-lib-search').addEventListener('input', () => { clearTimeout(_searchT); _searchT = setTimeout(() => renderBrowse(1), THRESHOLDS.SEARCH_DEBOUNCE); });
   $('#ata-lib-filter').addEventListener('change', () => renderBrowse(1));
   // v4.5.39 新增浏览控件
   $c('#ata-lib-regex')?.addEventListener('change', () => renderBrowse(1));
@@ -4722,7 +4761,7 @@
   ========================================================= */
   let _cloudDB = null;       // 云端题库数据
   let _cloudPage = 1;
-  const CLOUD_PAGE_SIZE = 20;
+  const CLOUD_PAGE_SIZE = THRESHOLDS.PAGE_SIZE;
   let _cloudBatchMode = false;
   let _cloudBatchSelected = new Set();
   let _cloudSearchT = null;
