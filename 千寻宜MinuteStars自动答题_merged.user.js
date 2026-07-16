@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         千寻宜 MinuteStars 自动答题器 Pro
 // @namespace    https://pcs.minutestars.com/
-// @version      4.9.49
+// @version      4.9.50
 // @author       JIA
 // @description  千寻宜 MinuteStars 平台自动答题助手，支持题库云端同步（Gitee）、AES-GCM 加密上传、Word/Excel 题库导入、Jaro-Winkler 模糊匹配、快捷键操作、答题报告导出等功能。
 // @license      MIT
@@ -1391,10 +1391,15 @@
       return {};
     }
     if (!raw || raw.trim() === '' || raw.trim() === '{}') return {};
+    // 如果内容仍以 ENC: 开头，说明解密失败
+    if (raw.startsWith('ENC:')) {
+      uLog('⚠️ 云端文件仍为加密状态，解密可能失败', 'warn');
+      return {};
+    }
     try {
       return JSON.parse(raw);
     } catch (e) {
-      uLog('⚠️ 云端文件 JSON 解析失败', 'warn');
+      uLog('⚠️ 云端文件 JSON 解析失败: ' + e.message, 'warn');
       return {};
     }
   }
